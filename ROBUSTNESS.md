@@ -155,3 +155,40 @@ Outputs: `output/bootstrap_rf.csv`, `output/bootstrap_realtr.csv`,
   term-structure correction, so OTM-put premiums are likely understated — the
   modest surviving tail benefit is, if anything, optimistic.
 - The put-expiry-at-measurement-date convention in the path engine is unchanged.
+
+## 5. Selling puts (put-writing overlay on 1x futures)
+
+`put_selling.py`: 1x futures + SHORT 30-day cash-settled puts, strike
+ATM/5%/10% OTM x notional ratio 0.25-1.0, bootstrap of 1934-2026, 10% margin.
+Full grid in `output/put_selling.{csv,png}`; robustness in
+`output/put_selling_robust.csv`. The marked-up headline ("selling puts improves
+median, mean AND the tail") decomposes into two very different pieces:
+
+ATM, ratio 1.0, 20-year horizon:
+
+| condition | median CAGR | tw_median | 5th-pct wealth | MDD_p95 |
+|---|---|---|---|---|
+| naked 1x | 11.4% | 8.7x | 2.71x | 55% |
+| short puts, marked-up (vol x1.2) | 21.2% | 46.7x | 6.74x | 71% |
+| short puts, FAIR-priced | 15.8% | 18.7x | 2.75x | 76% |
+
+- **Fair-priced put-writing is just added downside leverage, not alpha.** It
+  still raises the median (11.4% -> 15.8%) because short puts add market
+  exposure that earns the equity premium in an up-drifting market -- but the
+  5th-percentile wealth is ~unchanged (2.75x vs naked 2.71x) and drawdowns
+  deepen (55% -> 76%). The beta is available more cheaply via ~1.3x futures.
+- **The entire tail *improvement* and about half the median uplift IS the
+  assumed 20% VRP markup** (fair -> marked lifts tw_p5 2.75x -> 6.74x and median
+  15.8% -> 21.2%). The attractive part of put-writing lives or dies on index
+  puts actually being ~20% rich and that richness being harvestable net of cost.
+- **The ruin numbers are NOT trustworthy for the short side.** P(ruin)=0 and the
+  put_mtm_for_liquidation flag changing nothing are both artifacts: the margin
+  threshold is sized to the 1x futures notional and charges no margin for the
+  short-put exposure itself, so the model cannot margin-call a put-writer. A real
+  broker margins short options (~15-20% of put notional + MTM loss); combined
+  with the block bootstrap de-clustering crashes (it breaks up the back-to-back
+  catastrophic months that bankrupt put-sellers), the true ruin risk of
+  ratio-1.0 ATM writing is materially higher than shown. Building a proper
+  short-option margin model is the prerequisite for trusting put-writing ruin.
+
+Reproduce: `python put_selling.py` (full grid, marked-up + fair).
