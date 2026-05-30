@@ -10,8 +10,12 @@ This module turns that into a clean daily frame with:
     rf_annual, rf_daily : financing rate (decimal, annual and per-day)
     sigma   : pricing vol (decimal) = VIX/100 where available, else trailing
               realized vol; used only at roll dates for Black-Scholes.
+    div_yield : time-varying annual dividend yield (decimal). Used as the BS
+              dividend term q, and as the pre-1988 total-return add-back.
     real_tr : bool, True where `tr` came from the genuine total-return index
-              (False where it was approximated from price + a flat dividend).
+              (False where it was approximated from price + a dividend yield).
+    has_rf  : bool, True where a genuine financing rate is available (1934+);
+              leverage > 1 is only meaningful here.
 """
 from __future__ import annotations
 
@@ -45,9 +49,16 @@ def prepare(cfg: Config) -> pd.DataFrame:
     out = pd.DataFrame(index=raw.index)
     out["S"] = raw["close"].astype(float)
 
+    # --- dividend yield (time-varying where sourced, else flat default) -----
+    if "div_yield" in raw and raw["div_yield"].notna().any():
+        div_yield = raw["div_yield"].astype(float).ffill().bfill()
+    else:
+        div_yield = pd.Series(cfg.div_yield, index=raw.index)
+    out["div_yield"] = div_yield
+
     # --- daily total return ------------------------------------------------
     price_ret = raw["close"].pct_change()
-    div_daily = cfg.div_yield / cfg.trading_days_per_year
+    div_daily = div_yield / cfg.trading_days_per_year
     approx_tr = price_ret + div_daily
     real_tr_mask = pd.Series(False, index=raw.index)
 
@@ -60,16 +71,16 @@ def prepare(cfg: Config) -> pd.DataFrame:
         if (~have).sum() > 1:  # first row is always NaN pct_change
             warnings.warn(
                 f"Total-return index covers {int(have.sum())}/{n} rows; "
-                f"{int((~have).sum())} rows use a flat {cfg.div_yield:.1%}/yr "
-                "dividend add-back approximation.",
+                f"{int((~have).sum())} rows use a time-varying dividend-yield "
+                "add-back approximation (Shiller D/P pre-1988).",
                 stacklevel=2,
             )
     else:
         tr = approx_tr
         warnings.warn(
-            "No total-return index available: approximating dividends with a "
-            f"flat {cfg.div_yield:.1%}/yr add-back. Over 20y of leveraged "
-            "compounding this materially affects results.",
+            "No total-return index available: approximating dividends with the "
+            "time-varying dividend yield. Over 20y of leveraged compounding "
+            "this materially affects results.",
             stacklevel=2,
         )
     out["tr"] = tr
@@ -79,7 +90,9 @@ def prepare(cfg: Config) -> pd.DataFrame:
     if "rf_annual" not in raw or raw["rf_annual"].isna().all():
         warnings.warn("No financing rate found; using 0%. (L>1) results unrealistic.", stacklevel=2)
         out["rf_annual"] = 0.0
+        out["has_rf"] = False
     else:
+        out["has_rf"] = raw["rf_annual"].notna().to_numpy()
         out["rf_annual"] = raw["rf_annual"].astype(float).ffill().fillna(0.0)
     out["rf_daily"] = out["rf_annual"] / cfg.trading_days_per_year
 

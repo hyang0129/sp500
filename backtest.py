@@ -76,10 +76,10 @@ def run_path(
     month_start = arrays["month_start"]
     lev = arrays["lev"]  # precomputed for cfg.leverage
 
+    div_yield = arrays["div_yield"]
     L = cfg.leverage
     m = cfg.put_moneyness
     protect_full = cfg.protect_notional == "full"
-    q = cfg.div_yield
     T = cfg.roll_period_years
     daily_check = cfg.liquidation_model == "daily_path" or cfg.rebalance == "daily"
     maint = cfg.maintenance_frac
@@ -114,7 +114,7 @@ def run_path(
             notional = (L if protect_full else 1.0) * equity
             units = notional / Si
             eff_sigma = sigma[i] * (cfg.vrp_markup if cfg.vrp_mode == "marked_up" else 1.0)
-            price = bs_put(Si, K, T, rf_annual[i], eff_sigma, q)
+            price = bs_put(Si, K, T, rf_annual[i], eff_sigma, div_yield[i])
             equity -= price * units
             if equity <= maint:
                 ruined = True
@@ -138,7 +138,16 @@ def run_path(
             intrinsic = np.maximum(put_K - S[a:b], 0.0) * put_units
             check_path = path + intrinsic
 
-        breach = np.flatnonzero(check_path <= maint)
+        # Liquidation threshold per day: an absolute floor (maintenance_frac),
+        # and -- if maint_margin_frac>0 -- a realistic margin call when equity
+        # drops below that fraction of the period notional (L * period-start
+        # equity). The period is the month (monthly) or the day (daily).
+        if cfg.maint_margin_frac > 0.0:
+            period_start_eq = _period_start_equity(path, seg_ms, equity, cfg.rebalance)
+            thresh = np.maximum(maint, cfg.maint_margin_frac * L * period_start_eq)
+        else:
+            thresh = maint
+        breach = np.flatnonzero(check_path <= thresh)
         if breach.size > 0 and daily_check:
             first = breach[0]
             path = path.copy()
@@ -148,7 +157,8 @@ def run_path(
             # month_end model: only liquidate if a *month-end* mark breaches.
             ms_idx = np.flatnonzero(seg_ms)
             month_ends = np.append(ms_idx[1:] - 1, len(path) - 1) if ms_idx.size else np.array([len(path) - 1])
-            bad = month_ends[check_path[month_ends] <= maint]
+            thr_me = thresh[month_ends] if np.ndim(thresh) else thresh
+            bad = month_ends[check_path[month_ends] <= thr_me]
             if bad.size > 0:
                 first = int(bad[0])
                 path = path.copy()
@@ -200,6 +210,29 @@ def run_path(
     )
 
 
+def _period_start_equity(path: np.ndarray, seg_ms: np.ndarray, entry_equity: float, rebalance: str) -> np.ndarray:
+    """Equity at the start of each day's *rebalance period* (for margin calls).
+
+    daily: the period is the day, so the base is the prior day's equity.
+    monthly: the period is the month; every day in a month block shares the
+    block-start equity (the notional was fixed there).
+    """
+    n = len(path)
+    if rebalance == "daily":
+        out = np.empty(n)
+        out[0] = entry_equity
+        out[1:] = path[:-1]
+        return out
+    out = np.empty(n)
+    starts = np.flatnonzero(seg_ms)
+    if starts.size == 0 or starts[0] != 0:
+        starts = np.insert(starts, 0, 0)
+    bounds = list(starts) + [n]
+    for s, e in zip(bounds[:-1], bounds[1:]):
+        out[s:e] = entry_equity if s == 0 else path[s - 1]
+    return out
+
+
 def build_arrays(data: pd.DataFrame, cfg: Config) -> dict:
     """Pull numpy arrays out of the frame once (avoids pandas in the hot loop)."""
     tr = data["tr"].to_numpy(float)
@@ -214,7 +247,9 @@ def build_arrays(data: pd.DataFrame, cfg: Config) -> dict:
         "rf_annual": data["rf_annual"].to_numpy(float),
         "S": data["S"].to_numpy(float),
         "sigma": data["sigma"].to_numpy(float),
+        "div_yield": data["div_yield"].to_numpy(float),
         "real_tr": data["real_tr"].to_numpy(bool),
+        "has_rf": data["has_rf"].to_numpy(bool) if "has_rf" in data else np.ones(len(data), bool),
         "month_start": month_start,
         "lev": levered_daily(tr, rf, cfg.leverage),
     }
@@ -226,19 +261,29 @@ def rolling_windows(
     window_years: int,
     step_months: int = 1,
     require_real_tr: bool = True,
+    history: str = "real_tr",
 ) -> List[PathResult]:
     """Run every rolling window of `window_years`, stepping `step_months`.
 
-    If require_real_tr, windows are restricted to the span where the genuine
-    total-return index is available (so results aren't polluted by the
-    dividend approximation).
+    `history` selects the eligible start span:
+      "real_tr" (default): only where the genuine total-return index exists
+        (1988+), so dividends are exact -- the conservative headline span.
+      "rf": any window with a genuine financing rate (1934+); pre-1988 windows
+        use the time-varying dividend-yield add-back. Use this to reach the
+        1929-era / high-rate / Japan-style stress regimes the audit flagged.
+      "all": the entire price history.
+    `require_real_tr=False` is kept as a back-compat alias for history="all".
     """
     arrays = build_arrays(data, cfg)
     dates = data.index
     n = len(dates)
 
-    if require_real_tr and arrays["real_tr"].any():
+    if not require_real_tr:
+        history = "all"
+    if history == "real_tr" and arrays["real_tr"].any():
         first_real = int(np.flatnonzero(arrays["real_tr"])[0])
+    elif history == "rf" and arrays["has_rf"].any():
+        first_real = int(np.flatnonzero(arrays["has_rf"])[0])
     else:
         first_real = 0
 

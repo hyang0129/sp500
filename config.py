@@ -44,7 +44,13 @@ class Config:
     # "month_end": float exposure intra-month, only mark at month end
     #   (understates ruin at 3x; comparison only).
     liquidation_model: str = "daily_path"
-    maintenance_frac: float = 0.0  # liquidate when equity <= maintenance_frac
+    maintenance_frac: float = 0.0  # absolute equity floor: liquidate when equity <= this
+    # Realistic margin call: liquidate when equity falls below this fraction of
+    # the *period notional* (L * equity-at-period-start). 0.0 disables it (the
+    # original literal-zero-ruin model). A typical broker maintenance margin on
+    # index exposure is ~0.10-0.30; with this on, a 3x book is wiped by a deep
+    # drawdown (not only by literal-zero equity), which is the realistic case.
+    maint_margin_frac: float = 0.0
     # If True, credit the protective put's *intrinsic* value to equity when
     # testing for intra-period liquidation (a cheap mark-to-market proxy).
     # Default False matches the handoff's European "payoff only at roll" model.
