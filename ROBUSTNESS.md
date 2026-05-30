@@ -91,7 +91,47 @@ Two findings the original model hid entirely:
    counts toward margin** roughly halves ruin. So the form of the protection,
    not just its presence, is what determines whether it saves you.
 
-## How to reproduce
+## 4. Leverage frontier — how much leverage, and where the ruin cliff is
+
+`frontier.py` sweeps leverage on a fine grid (0.75× → 3×) with no puts, under a
+realistic 10%-of-notional maintenance margin, over the 1934+ bootstrap. The
+honest growth metric is **median terminal wealth** (it scores wipeouts as 0,
+unlike median CAGR which is conditional on survivors). See
+`output/leverage_frontier.{csv,png}`.
+
+| L | 5y median wealth | 5y 5th-pct | 5y P(ruin) | 20y median wealth | 20y 5th-pct | 20y P(ruin) |
+|---|---|---|---|---|---|---|
+| 0.75× | 1.58× | 1.04× | 0% | 6.23× | 2.55× | 0% |
+| 1.0× | 1.72× | 0.97× | 0% | 8.49× | 2.60× | 0% |
+| 1.25× | 1.84× | 0.89× | 0% | 11.23× | 2.48× | 0% |
+| 1.5× | 1.97× | 0.81× | 0% | 14.44× | 2.36× | 0% |
+| 1.75× | 2.07× | 0.73× | 0% | 17.87× | 2.13× | 0% |
+| **2.0×** | 2.16× | 0.65× | 0.1% | **21.18×** | 1.79× | 0% |
+| 2.5× | 2.28× | **0.00×** | 5.7% | 17.10× | **0.00×** | 20.0% |
+| 3.0× | 2.25× | 0.00× | 15.9% | **0.00×** | 0.00× | 53.8% |
+
+Findings:
+
+- **Geometric growth peaks at ~2× and then falls.** Over 20 years median wealth
+  tops out at 2× (21×) and *declines* above it (2.5× → 17×, 3× → 0). Past 2×
+  you are strictly dominated: less growth *and* a ruin cliff (ruin 0% → 20% →
+  54% across 2.0 / 2.5 / 3.0×). 3× is not "aggressive", it is worse on every
+  axis. So 2× is the rational ceiling, not a midpoint.
+- **~1.5× is the risk-adjusted sweet spot.** At 20y it nearly doubles median
+  wealth vs 1× (8.5× → 14.4×) while its 5th-percentile barely moves
+  (2.60× → 2.36×, vs 2×'s 1.79×). The tail is almost flat from 0.75× to 1.5×
+  because moderate-leverage drawdowns heal over two decades — extra growth there
+  is close to free. The tail only starts paying around 1.75–2×.
+- **Below 1× is pointless at long horizons.** At 20y, 1× beats 0.75× on *both*
+  growth (8.5× vs 6.2×) and tail (2.60× vs 2.55×) — equity drift means
+  de-levering below 1× just discards return. Sub-1× is only defensible for a
+  short hold where keeping the worst case above 1.0× matters (0.75× / 5y: 1.04×).
+- **The whole 1.25×–1.75× band** improves on 1×'s return while keeping a better
+  5th-percentile than 2× — a continuous efficient region, with 1.5× at its knee.
+
+Reproduce: `python frontier.py`.
+
+
 
 ```bash
 python fetch_data.py                       # rebuild extended 1928-2026 CSV
