@@ -131,7 +131,7 @@ Findings:
 
 Reproduce: `python frontier.py`.
 
-
+## How to reproduce
 
 ```bash
 python fetch_data.py                       # rebuild extended 1928-2026 CSV
@@ -143,18 +143,6 @@ pytest -q
 
 Outputs: `output/bootstrap_rf.csv`, `output/bootstrap_realtr.csv`,
 `output/bootstrap_margin_sweep.csv`.
-
-## What is still not fixed
-
-- **Single-country menu of shocks.** Block-bootstrapping US history recombines
-  US crashes with US recoveries; it cannot manufacture a Japan-1990-style
-  permanent impairment the US never had. A cross-country panel bootstrap
-  (Dimson-Marsh-Staunton / Jordà-Schularick-Taylor) remains the right fix for
-  the survivorship tail.
-- **Option pricing** still uses ATM VIX (×1.2) with no volatility skew or
-  term-structure correction, so OTM-put premiums are likely understated — the
-  modest surviving tail benefit is, if anything, optimistic.
-- The put-expiry-at-measurement-date convention in the path engine is unchanged.
 
 ## 5. Selling puts (put-writing overlay on 1x futures)
 
@@ -192,3 +180,20 @@ ATM, ratio 1.0, 20-year horizon:
   short-option margin model is the prerequisite for trusting put-writing ruin.
 
 Reproduce: `python put_selling.py` (full grid, marked-up + fair).
+
+## What is still not fixed
+
+- **Single-country menu of shocks.** Block-bootstrapping US history recombines
+  US crashes with US recoveries; it cannot manufacture a Japan-1990-style
+  permanent impairment the US never had. A cross-country panel bootstrap
+  (Dimson-Marsh-Staunton / Jordà-Schularick-Taylor) remains the right fix for
+  the survivorship tail.
+- **Option pricing** still uses ATM VIX (×1.2) with no volatility skew or
+  term-structure correction, so OTM-put premiums are mispriced (long OTM puts
+  understated; short-put VRP is a single flat markup).
+- **No short-option margin model.** The margin threshold is sized to the futures
+  notional only, so put-WRITERS cannot be margin-called (§5) — put-selling ruin
+  is understated and needs a proper short-option margin requirement.
+- **Block bootstrap de-clusters crashes**, understating the back-to-back
+  catastrophic months that most hurt leveraged longs and put-writers alike.
+- The put-expiry-at-measurement-date convention in the path engine is unchanged.
