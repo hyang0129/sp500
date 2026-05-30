@@ -7,7 +7,7 @@ Grid (cartesian product):
     vrp_mode    in {fair, marked_up}
     liquidation = daily_path (default)
 
-Each cell is evaluated over every rolling 10y and 20y window (monthly step),
+Each cell is evaluated over every rolling 5y/10y/15y/20y window (monthly step),
 yielding a distribution of outcomes. Output: output/results.csv (one row per
 window per cell).
 """
@@ -29,7 +29,7 @@ LEVERAGES = [1.0, 2.0, 3.0]
 MONEYNESS = [None, 0.15, 0.20, 0.25]
 REBALANCE = ["monthly", "daily"]
 VRP_MODES = ["fair", "marked_up"]
-WINDOWS = [10, 20]
+WINDOWS = [5, 10, 15, 20]
 
 
 def run_grid(

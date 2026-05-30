@@ -1,9 +1,9 @@
 # Findings: does annually-rolled OTM put protection help leveraged S&P 500 buy-and-hold?
 
-*Backtest over rolling 10y and 20y windows, S&P 500 total return 1988–2026
-(341 ten-year windows, 221 twenty-year windows, monthly step). Headline figures
-use **monthly rebalancing** and **marked-up premiums** (BS implied vol ×1.2, the
-realistic-cost case). Financing = 13-week T-bill. Liquidation = `daily_path`.*
+*Backtest over rolling 5y / 10y / 15y / 20y windows, S&P 500 total return
+1988–2026 (monthly step). Headline figures use **monthly rebalancing** and
+**marked-up premiums** (BS implied vol ×1.2, the realistic-cost case).
+Financing = 13-week T-bill. Liquidation = `daily_path`.*
 
 ## The short answer
 
@@ -14,6 +14,49 @@ hypothesis predicts — and this only pays off at **3x (marginally 2x) over ~10
 year horizons**. At **1x it is pure drag**, and over **20-year horizons** the
 in-sample market always recovered, so 20 years of premium cost makes the
 unprotected book win the tail.
+
+## Horizon is the dominant variable — a narrow ~10-year sweet spot
+
+Holding leverage and strike fixed (3x, 20% OTM put, marked-up premiums) and only
+varying the horizon shows the benefit is *not* monotonic in time — it appears at
+~10 years and vanishes on either side:
+
+| horizon | median CAGR (none → put) | 5th-pct terminal wealth (none → put) | verdict |
+|---|---|---|---|
+| 5 years  | 28.7% → 22.8% | 0.40× → 0.32× | protection **hurts** (everything) |
+| **10 years** | 18.8% → **19.2%** | 0.30× → **0.43×** | protection **helps** (median *and* tail) |
+| 15 years | 19.0% → 14.9% | 1.57× → 1.11× | protection hurts |
+| 20 years | 14.8% → 13.5% | 6.37× → 3.96× | protection hurts |
+
+Notice the *unprotected* 5th-percentile terminal wealth climbs with horizon
+(0.40 → 0.30 → 1.57 → 6.37): only the ~10-year tail dips below water (0.30×).
+That dip is the entire opportunity for protection. By 15–20 years the worst case
+is already "you still made several times your money," so there is nothing left to
+insure and the premium is pure drag.
+
+### Why it helps at 10 years but not at 20 (the key mechanism)
+
+A crash only damages your *final* number if the window ends before you recover
+from it. Tail protection therefore isn't really insuring against crashes — it is
+insuring against **being measured at a bad moment** (your hold ending near a
+bottom). The evidence is stark in the worst windows:
+
+- **Worst 10-year windows (3x), every one of them: Mar 1999 → Mar 2009** — they
+  end at the exact bottom of the 2008 crash, at **0.08×** (you lost 92%). The
+  window's clock runs out with zero recovery time, so the put's payoff lands
+  precisely when wealth is measured and directly rescues the number.
+- **Worst 20-year windows (3x): 1989 → 2009, ending at 2.95×** (still nearly
+  tripled), or 2000 → 2020 at 4.5×. A crash in a 20-year hold is *never* fatal to
+  the final number: it either sits in the middle with a decade of recovery after
+  it (the put's mid-window payoff is wasted — you'd have recovered anyway), or it
+  lands at the end but was preceded by a bull market that built a cushion.
+
+The counterintuitive part: longer horizons contain *more* crashes, so the put
+pays off *more often* — but **payoff timing, not payoff count, is what matters.**
+A put that pays in year 8 of a 20-year hold is wasted money. Empirically, the
+U.S. had a *lost decade* (the 2000s) but never *lost two decades* — and the put
+protects lost decades. Add that 20 years bills double the premiums of 10, and the
+long-horizon case collapses entirely.
 
 ## Where protection wins, and where it doesn't
 
@@ -81,11 +124,22 @@ reverse it.
 If you are running **2x–3x leverage with a ~10-year horizon and care about not
 getting wiped out**, an annually-rolled **15–20% OTM put** raises your median
 and your worst-case ending wealth net of realistic premiums — buy the
-protection. If you are at **1x**, or genuinely have a **20-year+ horizon and the
-stomach to ride drawdowns to recovery**, the premium is a net drag in this
-sample — skip it. The crossover is driven by leverage (volatility drag scales
-with L²) and by horizon (longer horizons give the market time to repay the
-drawdown the put would have insured).
+protection. Everywhere else in this sample, skip it:
+
+- **1x, any horizon** — no ruin risk to insure; the premium is dead weight.
+- **5-year horizon** — too little recovery runway for the put's "preserve the
+  base" benefit to repay the premiums, and an annual European put is too coarse
+  to reliably catch a short window's worst move; protection hurts every metric.
+- **15–20-year horizon** — the market always recovered in-sample, so the worst
+  case is already "you still made several times your money"; double-to-quadruple
+  the premiums buy insurance that never pays where it counts.
+
+The sweet spot is narrow because two forces pull in opposite directions:
+**leverage** raises the payoff to protection (volatility drag scales with L², and
+high leverage is what creates a below-water tail in the first place), while
+**horizon** erodes it (longer holds give the market time to repay the drawdown
+the put would have insured, *and* bill more premiums). They only both favor
+protection together at roughly 2x–3x over ~10 years.
 
 *Caveats: total-return data starts 1988 (no high-rate 1970s–80s); 20y
 conclusions hinge on the in-sample fact that every 20y window recovered;

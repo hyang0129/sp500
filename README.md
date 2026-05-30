@@ -53,7 +53,7 @@ pip install -r requirements.txt
 # (optional) re-source the daily data from Yahoo Finance into data/sp500_daily.csv
 python fetch_data.py
 
-# run the full experiment grid -> output/results.csv  (~80s, step 1 month)
+# run the full experiment grid -> output/results.csv  (~3 min, step 1 month)
 python experiments.py --step-months 1
 
 # build metric tables (output/summary_*.csv) + charts (output/*.png)
@@ -86,7 +86,8 @@ are forward-filled. If `total_return_index` is absent, dividends are
 approximated with a flat add-back (default 1.8%/yr) **and a warning is logged**.
 
 The default experiment universe is the genuine-total-return span (1988-01 →
-2026-05): **341 rolling 10y windows and 221 rolling 20y windows** (monthly step).
+2026-05), evaluated over rolling **5y / 10y / 15y / 20y** windows (monthly
+step; e.g. 401 five-year and 221 twenty-year windows).
 
 ---
 

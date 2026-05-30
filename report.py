@@ -97,8 +97,11 @@ def chart_p_ruin(df, rebalance, vrp_mode, path):
     sub = df[(df.rebalance == rebalance)
              & ((df.vrp_mode == vrp_mode) | (df.protection == "none"))]
     s = summarize(sub)
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5), sharey=True)
-    for ax, wy in zip(axes, sorted(s.window_years.unique())):
+    wys = sorted(s.window_years.unique())
+    fig, axes = plt.subplots(1, len(wys), figsize=(6 * len(wys), 5), sharey=True)
+    if len(wys) == 1:
+        axes = [axes]
+    for ax, wy in zip(axes, wys):
         ss = s[s.window_years == wy]
         levs = sorted(ss.leverage.unique())
         x = np.arange(len(levs))
