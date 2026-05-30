@@ -21,11 +21,19 @@ class Config:
     # Out-of-the-money fraction for the annually-rolled protective put.
     # None  -> no protection. 0.20 -> strike 20% below spot.
     put_moneyness: Optional[float] = None
+    # "buy"  -> long protective puts (premium paid, payoff received: a hedge).
+    # "sell" -> short puts (premium collected, payoff paid: income / VRP harvest,
+    #           a short-vol overlay that fattens the left tail).
+    put_side: str = "buy"
+    # Put notional as a fraction of equity. None -> fall back to protect_notional
+    # ("full"->L*equity, "base"->equity). E.g. put_ratio=0.5 sells/buys puts on
+    # 50% of the portfolio's notional.
+    put_ratio: Optional[float] = None
     # Protect the full leveraged notional ("full" -> L*equity) or just the
     # 1x base ("base" -> equity). Full is the default; base is cheaper but
     # leaves the leverage exposed.
     protect_notional: str = "full"
-    roll_period_years: float = 1.0  # annual roll (BS T)
+    roll_period_years: float = 1.0  # roll/expiry tenor in years (1/12 ~= 30-day)
 
     # --- option pricing ----------------------------------------------------
     # "fair"       -> use sigma as observed.

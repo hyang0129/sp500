@@ -40,8 +40,10 @@ def _roll_indices(dates: pd.DatetimeIndex, start_i: int, end_i: int, period_year
     end_date = dates[end_i]
     rolls = [start_i]
     k = 1
+    # day-based so sub-annual tenors (e.g. 30-day ~ period_years=1/12) work too.
+    period_days = max(1, int(round(period_years * 365.25)))
     while True:
-        anniv = d0 + pd.DateOffset(years=int(round(k * period_years)))
+        anniv = d0 + pd.Timedelta(days=k * period_days)
         if anniv >= end_date:
             break
         j = int(dates.searchsorted(anniv, side="left"))
@@ -80,6 +82,8 @@ def run_path(
     L = cfg.leverage
     m = cfg.put_moneyness
     protect_full = cfg.protect_notional == "full"
+    put_sign = 1.0 if cfg.put_side == "buy" else -1.0  # +1 long hedge, -1 short
+    ratio_cfg = cfg.put_ratio
     T = cfg.roll_period_years
     daily_check = cfg.liquidation_model == "daily_path" or cfg.rebalance == "daily"
     maint = cfg.maintenance_frac
@@ -95,10 +99,14 @@ def run_path(
 
     for k in range(len(rolls)):
         i = rolls[k]
-        # 1) Settle the put bought at the previous roll (payoff at expiry).
+        # 1) Cash-settle the put from the previous roll (payoff at expiry).
+        #    Long (+): receive payoff. Short (-): pay it -> can drive ruin.
         if put_units > 0.0 and not ruined:
             payoff = max(put_K - S[i], 0.0) * put_units
-            equity += payoff
+            equity += put_sign * payoff
+            if equity <= maint:
+                ruined = True
+                equity = 0.0
         put_units = 0.0
         if record_curve:
             curve_idx.append(i)
@@ -107,15 +115,17 @@ def run_path(
         if k == len(rolls) - 1:
             break  # final roll: window ends, nothing more to do
 
-        # 2) Buy protection for the coming year (premium paid now).
+        # 2) Open the put overlay for the coming period (premium now).
+        #    Long: pay premium. Short: collect it.
         if m is not None and not ruined and equity > 0.0:
             Si = S[i]
             K = (1.0 - m) * Si
-            notional = (L if protect_full else 1.0) * equity
+            ratio = ratio_cfg if ratio_cfg is not None else (L if protect_full else 1.0)
+            notional = ratio * equity
             units = notional / Si
             eff_sigma = sigma[i] * (cfg.vrp_markup if cfg.vrp_mode == "marked_up" else 1.0)
             price = bs_put(Si, K, T, rf_annual[i], eff_sigma, div_yield[i])
-            equity -= price * units
+            equity -= put_sign * price * units
             if equity <= maint:
                 ruined = True
                 equity = 0.0
@@ -134,9 +144,9 @@ def run_path(
         # 4) Liquidation scan (absorbing zero) + drawdown tracking.
         check_path = path
         if cfg.put_mtm_for_liquidation and put_units > 0.0:
-            # Cheap mark-to-market: credit the put's intrinsic value each day.
+            # Cheap mark-to-market: long credits intrinsic, short debits it.
             intrinsic = np.maximum(put_K - S[a:b], 0.0) * put_units
-            check_path = path + intrinsic
+            check_path = path + put_sign * intrinsic
 
         # Liquidation threshold per day: an absolute floor (maintenance_frac),
         # and -- if maint_margin_frac>0 -- a realistic margin call when equity
