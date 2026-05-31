@@ -169,17 +169,49 @@ ATM, ratio 1.0, 20-year horizon:
   assumed 20% VRP markup** (fair -> marked lifts tw_p5 2.75x -> 6.74x and median
   15.8% -> 21.2%). The attractive part of put-writing lives or dies on index
   puts actually being ~20% rich and that richness being harvestable net of cost.
-- **The ruin numbers are NOT trustworthy for the short side.** P(ruin)=0 and the
-  put_mtm_for_liquidation flag changing nothing are both artifacts: the margin
-  threshold is sized to the 1x futures notional and charges no margin for the
-  short-put exposure itself, so the model cannot margin-call a put-writer. A real
-  broker margins short options (~15-20% of put notional + MTM loss); combined
-  with the block bootstrap de-clustering crashes (it breaks up the back-to-back
-  catastrophic months that bankrupt put-sellers), the true ruin risk of
-  ratio-1.0 ATM writing is materially higher than shown. Building a proper
-  short-option margin model is the prerequisite for trusting put-writing ruin.
+### 5a. Fixing the ruin model: short-option margin + the 1929 crash
 
-Reproduce: `python put_selling.py` (full grid, marked-up + fair).
+The first cut reported P(ruin)=0 for writers, which was an artifact of two
+things. Both are now fixed, and the conclusion reverses.
+
+**Fix 1 -- short-option margin** (`backtest.py`): a short put is now marked to
+market against equity *and* carries its own maintenance margin on the put
+notional, so a writer can actually be margin-called. Verified: a 1x+short-ATM
+book (full notional) is wiped by the 1987 crash at a 25% requirement.
+
+**Fix 2 -- crash clustering & the worst crash.** Block length (21/63/126-day)
+barely moved the writer's ruin (`output/put_selling_margin.csv`) -- clustering
+alone isn't the issue. The real issue is the *pool*: `history="rf"` starts in
+**1934 and excludes the 1929-32 crash (-86%)**, the single worst event for a
+put-seller. Putting it back (`history="all"`) is decisive
+(`output/put_selling_depression.csv`):
+
+20-year horizon, short ATM puts, ratio 1.0:
+
+| pool | short-opt margin | median CAGR | tw_median | 5th-pct wealth | P(ruin) |
+|---|---|---|---|---|---|
+| 1934+ (no Depression) | 15% | 21.6% | 50.1x | 5.26x | 0.1% |
+| **1928+ (incl. 1929-32)** | **15%** | 19.1% | 28.6x | **0.00x** | **7.2%** |
+| 1928+ (incl. 1929-32) | 25% | 21.7% | 0.00x | 0.00x | **55.2%** |
+
+The naked 1x holder rides the same Depression-inclusive scenarios to a 1.71x
+5th-percentile (P(ruin)=0). The put-writer, on the same paths, has a **wiped-out
+5th percentile (0.00x) and 7-55% ruin**. Selling puts converts a survivable-if-
+painful left tail into a wipeout -- the textbook "pennies in front of a
+steamroller." The median stays gorgeous (19-22%) right up until the tail event
+zeroes it.
+
+**Corrected verdict on put-writing.** The "improves everything" headline was the
+joint product of (a) an assumed 20% VRP edge (fair pricing halves the median
+gain and erases the tail gain, §5), (b) no short-option margin, and -- the big
+one -- (c) a resampling pool that excluded the 1929-32 crash. Fix all three and
+systematic full-notional ATM writing is a high-median, fat-left-tail short-vol
+bet with real wipeout risk, not a free lunch. Lower ratios / further-OTM strikes
+scale the risk down proportionally.
+
+Reproduce: `python put_selling.py` (full grid); the margin/clustering and
+Depression reruns are in `output/put_selling_margin.csv` and
+`output/put_selling_depression.csv`.
 
 ## What is still not fixed
 
@@ -191,9 +223,16 @@ Reproduce: `python put_selling.py` (full grid, marked-up + fair).
 - **Option pricing** still uses ATM VIX (×1.2) with no volatility skew or
   term-structure correction, so OTM-put premiums are mispriced (long OTM puts
   understated; short-put VRP is a single flat markup).
-- **No short-option margin model.** The margin threshold is sized to the futures
-  notional only, so put-WRITERS cannot be margin-called (§5) — put-selling ruin
-  is understated and needs a proper short-option margin requirement.
-- **Block bootstrap de-clusters crashes**, understating the back-to-back
-  catastrophic months that most hurt leveraged longs and put-writers alike.
+- **The monthly path is additive intra-month**, which dampens the depth of a
+  sharp single-month crash and so understates intra-month margin calls (a writer
+  needs a ~35% one-month index drop to be called at 15% margin). A daily-marked
+  path would call writers more often; the §5a ruin figures are still a floor.
+- **Default `history="rf"` (1934+) excludes the 1929-32 crash.** Tail-sensitive
+  work (esp. put-writing) should use `history="all"` (1928+); §5a shows it is
+  decisive. Cross-country panels (DMS / Jordà-Schularick-Taylor) remain the fix
+  for impairments the US never had at all (Japan-1990).
 - The put-expiry-at-measurement-date convention in the path engine is unchanged.
+
+Resolved since the first draft: short-option margin (§5a, writers can now be
+margin-called) and crash-clustering sensitivity (block length 21/63/126 barely
+moves results -- §5a).
