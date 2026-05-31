@@ -96,6 +96,7 @@ def run_path(
     ruined = False
     put_units = 0.0
     put_K = 0.0
+    put_notional = 0.0
 
     for k in range(len(rolls)):
         i = rolls[k]
@@ -132,6 +133,7 @@ def run_path(
             else:
                 put_units = units
                 put_K = K
+                put_notional = notional
 
         # 3) Run the leverage engine over the segment [i, rolls[k+1]].
         a, b = i + 1, rolls[k + 1] + 1  # daily returns from day after roll to next roll
@@ -142,19 +144,28 @@ def run_path(
         path = segment_equity_path(equity, seg_lev, seg_ms, cfg.rebalance)
 
         # 4) Liquidation scan (absorbing zero) + drawdown tracking.
+        # Mark the put's intrinsic value into the equity used for the margin
+        # test: a LONG put is an asset (credited, opt-in via put_mtm flag); a
+        # SHORT put is a liability (always debited once a margin model is on, so
+        # a put-writer can actually be margin-called intra-period).
+        short_put = put_sign < 0.0 and put_units > 0.0
+        mark_short = short_put and cfg.maint_margin_frac > 0.0
         check_path = path
-        if cfg.put_mtm_for_liquidation and put_units > 0.0:
-            # Cheap mark-to-market: long credits intrinsic, short debits it.
+        if put_units > 0.0 and (cfg.put_mtm_for_liquidation or mark_short):
             intrinsic = np.maximum(put_K - S[a:b], 0.0) * put_units
             check_path = path + put_sign * intrinsic
 
         # Liquidation threshold per day: an absolute floor (maintenance_frac),
-        # and -- if maint_margin_frac>0 -- a realistic margin call when equity
-        # drops below that fraction of the period notional (L * period-start
-        # equity). The period is the month (monthly) or the day (daily).
+        # and -- if maint_margin_frac>0 -- a maintenance requirement of that
+        # fraction of the period notional. The futures leg requires margin on
+        # L*equity; a short put requires its own margin on the put notional
+        # (its MTM loss is already netted out of check_path above).
         if cfg.maint_margin_frac > 0.0:
             period_start_eq = _period_start_equity(path, seg_ms, equity, cfg.rebalance)
-            thresh = np.maximum(maint, cfg.maint_margin_frac * L * period_start_eq)
+            req = cfg.maint_margin_frac * L * period_start_eq
+            if short_put:
+                req = req + cfg.maint_margin_frac * put_notional
+            thresh = np.maximum(maint, req)
         else:
             thresh = maint
         breach = np.flatnonzero(check_path <= thresh)

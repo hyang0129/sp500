@@ -68,3 +68,23 @@ def test_effective_sample_size_small_for_overlapping():
     # 30 years of monthly-stepped 20y windows ~ 1.5 independent windows
     starts = pd.Series(pd.date_range("1990-01-01", "2006-01-01", freq="MS"))
     assert effective_sample_size(starts, 20) < 1.0
+
+
+def test_short_put_margin_can_ruin_writer():
+    """With a margin model on, a 1x + short ATM puts (full notional) book is
+    liquidatable in a crash -- the old futures-only margin never called it."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        data = prepare(Config())
+    dates = data.index
+    s = int(dates.searchsorted(pd.Timestamp("2007-06-01")))
+    e = int(dates.searchsorted(pd.Timestamp("2009-06-01")))
+    common = dict(leverage=1.0, put_side="sell", put_moneyness=0.0, put_ratio=1.0,
+                  roll_period_years=1/12, rebalance="monthly", vrp_mode="marked_up")
+    no_margin = Config(maint_margin_frac=0.0, **common)
+    with_margin = Config(maint_margin_frac=0.15, **common)
+    r0 = run_path(data, no_margin, s, e, build_arrays(data, no_margin))
+    rm = run_path(data, with_margin, s, e, build_arrays(data, with_margin))
+    # the short-option margin model must be at least as likely to ruin
+    assert rm.max_drawdown >= r0.max_drawdown - 1e-9
+    assert rm.ruined or rm.terminal_wealth <= r0.terminal_wealth + 1e-9
