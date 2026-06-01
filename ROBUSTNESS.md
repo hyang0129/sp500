@@ -260,3 +260,49 @@ ratio (sell ATM 30-day puts, NEW short-option margin at 15%, Depression-inclusiv
 - Dose-response: each +0.25 ratio adds ~+2.3 pts median CAGR; free on the tail up
   to 0.5, toxic by 1.0. **Right-sizing (~0.25, up to ~0.5) is the conclusion** --
   the "pennies in front of a steamroller" failure was full-notional sizing.
+
+## 6. What the VRP actually is — and a pricing correction
+
+Measured from VIX vs the realized vol over the *next* 21 trading days (S&P 500,
+1990-2026):
+
+| measure | value |
+|---|---|
+| mean VIX (implied) | 19.5% |
+| mean subsequent realized vol | 15.4% |
+| IV - RV spread | +4.1 vol pts (median +4.7) |
+| IV/RV | ~1.3x (ratio of means); ~1.4x (median of daily ratios) |
+| variance premium VIX^2 - RV^2 | ~115 annualized variance pts |
+| days IV > RV | 86% |
+
+The premium is conditional (cushion widens from +2.8 vol pts when VIX<15 to +6.3
+when VIX>30) and the ~14% of days where realized beats implied cluster in
+crashes -- the VRP is **payment for crash risk, not free money**. OTM puts carry
+an extra skew premium (their IV sits above VIX).
+
+**Pricing correction.** The VRP is *already inside VIX*, and the sim prices with
+sigma=VIX. So **`vrp_mode="fair"` (premium = BS at VIX) is the realistic
+put-seller** -- selling at the market already harvests the full VRP because the
+payout uses realized prices. `vrp_mode="marked_up"` (BS at 1.2xVIX ~ 1.55x
+realized) over-credits ATM writers and was too generous in sections 5/5b above.
+For ATM, fair is correct; for OTM, marked-up is a rough proxy for skew.
+
+Realistic ATM put-writing (fair premium, Depression pool, 15% margin, 20y;
+`output/put_selling_ratio_fair.csv`):
+
+| ratio | median CAGR | 5th-pct wealth | MDD_p95 | P(ruin) |
+|---|---|---|---|---|
+| naked 1x | 10.1% | 1.71x | 70% | 0% |
+| 0.25 | 11.1% | 1.66x | 75% | 0% |
+| 0.5 | 12.0% | 1.51x | 81% | 0% |
+| 0.75 | 12.6% | 1.15x | 87% | 1.2% |
+| 1.0 | 13.5% | 0.00x | 100% | 7.4% |
+
+- The harvestable edge is **~+1 pt CAGR per 0.25 notional** (a few pts/yr total),
+  matching what CBOE PUTW-style indices earn over cash -- not the +2.4/+9 pts the
+  marked-up run implied.
+- Realistic put-writing does **NOT improve the tail** (5th-pct 1.66x at r0.25 vs
+  naked 1.71x); it trades a fatter left tail + deeper drawdowns for a modest
+  return bump. The earlier "improves the tail too" was the double-counted markup.
+- Net: a sensible small-size (~0.25) return enhancer that is explicitly paid for
+  bearing crash risk; ruinous at full notional.
