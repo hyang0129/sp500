@@ -88,3 +88,26 @@ def test_short_put_margin_can_ruin_writer():
     # the short-option margin model must be at least as likely to ruin
     assert rm.max_drawdown >= r0.max_drawdown - 1e-9
     assert rm.ruined or rm.terminal_wealth <= r0.terminal_wealth + 1e-9
+
+
+def test_delta_strike_hits_target_delta():
+    from model import delta_strike
+    from scipy.stats import norm
+    S, T, r, q, sig = 100.0, 1/12, 0.04, 0.015, 0.20
+    for target in (0.10, 0.25, 0.40):
+        K = delta_strike(S, target, T, r, sig, q)
+        d1 = (np.log(S/K) + (r-q+0.5*sig*sig)*T)/(sig*np.sqrt(T))
+        realized = np.exp(-q*T)*norm.cdf(-d1)
+        assert abs(realized - target) < 1e-6
+        assert K < S  # OTM put
+
+
+def test_skew_raises_otm_premium():
+    """skew_slope makes an OTM put richer; ATM is unaffected (OTM fraction 0)."""
+    from model import bs_put
+    S, T, r, q = 100.0, 1/12, 0.04, 0.015
+    base = 0.20
+    K_otm = 90.0
+    flat = bs_put(S, K_otm, T, r, base, q)
+    skewed = bs_put(S, K_otm, T, r, base + 0.7*((S-K_otm)/S), q)
+    assert skewed > flat

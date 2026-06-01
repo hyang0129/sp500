@@ -30,6 +30,19 @@ def bs_put(S: float, K: float, T: float, r: float, sigma: float, q: float = 0.0)
     return K * np.exp(-r * T) * norm.cdf(-d2) - S * np.exp(-q * T) * norm.cdf(-d1)
 
 
+def delta_strike(S: float, target_abs_delta: float, T: float, r: float, sigma: float, q: float = 0.0) -> float:
+    """Strike K of a European put with |delta| == target_abs_delta.
+
+    put delta = -e^{-qT} N(-d1)  =>  N(-d1) = |delta| e^{qT}  =>  d1 = -Phi^{-1}(.)
+    then invert d1 = (ln(S/K) + (r-q+sigma^2/2)T)/(sigma sqrt(T)) for K.
+    """
+    if sigma <= 0 or T <= 0:
+        return S
+    x = min(max(target_abs_delta * np.exp(q * T), 1e-6), 1.0 - 1e-6)
+    d1 = -norm.ppf(x)
+    return S * np.exp(-(d1 * sigma * np.sqrt(T)) + (r - q + 0.5 * sigma * sigma) * T)
+
+
 def bs_call(S: float, K: float, T: float, r: float, sigma: float, q: float = 0.0) -> float:
     """European call price (provided for put-call-parity testing)."""
     if T <= 0 or sigma <= 0:

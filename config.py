@@ -21,6 +21,14 @@ class Config:
     # Out-of-the-money fraction for the annually-rolled protective put.
     # None  -> no protection. 0.20 -> strike 20% below spot.
     put_moneyness: Optional[float] = None
+    # Target |delta| for the put strike instead of a fixed moneyness (e.g. 0.25
+    # sells the 25-delta put -- a vol-adaptive strike). Overrides put_moneyness
+    # for strike selection when set.
+    put_delta: Optional[float] = None
+    # Linear vol skew (points of vol per unit OTM fraction) added to the pricing
+    # sigma for OTM puts: eff_sigma = base + skew_slope*max((S-K)/S, 0). 0.0 =
+    # flat (no skew). ~0.6-0.8 approximates 1-month SPX put skew.
+    skew_slope: float = 0.0
     # "buy"  -> long protective puts (premium paid, payoff received: a hedge).
     # "sell" -> short puts (premium collected, payoff paid: income / VRP harvest,
     #           a short-vol overlay that fattens the left tail).

@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 
 from config import Config
-from model import bs_put, levered_daily, segment_equity_path
+from model import bs_put, delta_strike, levered_daily, segment_equity_path
 
 
 @dataclass
@@ -118,13 +118,18 @@ def run_path(
 
         # 2) Open the put overlay for the coming period (premium now).
         #    Long: pay premium. Short: collect it.
-        if m is not None and not ruined and equity > 0.0:
+        if (m is not None or cfg.put_delta is not None) and not ruined and equity > 0.0:
             Si = S[i]
-            K = (1.0 - m) * Si
+            base_sig = sigma[i] * (cfg.vrp_markup if cfg.vrp_mode == "marked_up" else 1.0)
+            if cfg.put_delta is not None:
+                K = delta_strike(Si, abs(cfg.put_delta), T, rf_annual[i], base_sig, div_yield[i])
+            else:
+                K = (1.0 - m) * Si
+            # add the volatility skew for OTM puts (higher IV the further OTM)
+            eff_sigma = base_sig + cfg.skew_slope * max((Si - K) / Si, 0.0)
             ratio = ratio_cfg if ratio_cfg is not None else (L if protect_full else 1.0)
             notional = ratio * equity
             units = notional / Si
-            eff_sigma = sigma[i] * (cfg.vrp_markup if cfg.vrp_mode == "marked_up" else 1.0)
             price = bs_put(Si, K, T, rf_annual[i], eff_sigma, div_yield[i])
             equity -= put_sign * price * units
             if equity <= maint:
