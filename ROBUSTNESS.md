@@ -236,3 +236,27 @@ Depression reruns are in `output/put_selling_margin.csv` and
 Resolved since the first draft: short-option margin (§5a, writers can now be
 margin-called) and crash-clustering sensitivity (block length 21/63/126 barely
 moves results -- §5a).
+
+### 5b. Position sizing is the whole game: put-writing by notional ratio
+
+The §5a wipeout was a full-notional phenomenon. Sweeping the short-put notional
+ratio (sell ATM 30-day puts, NEW short-option margin at 15%, Depression-inclusive
+`all` pool, 20-year horizon; `output/put_selling_ratio.csv`):
+
+| ratio | median CAGR | tw_median | 5th-pct wealth | P(ruin) |
+|---|---|---|---|---|
+| naked 1x | 10.1% | 6.8x | 1.71x | 0% |
+| 0.25 | 12.5% | 10.5x | **2.12x** | 0% |
+| 0.5 | 14.5% | 15.1x | 2.44x | 0% |
+| 0.75 | 16.8% | 21.7x | 2.33x | 1.2% |
+| 1.0 | 19.1% | 28.6x | **0.00x** | **7.2%** |
+
+- At **ratio 0.25-0.5 the verdict is genuinely good**: median *and* 5th-percentile
+  wealth both beat naked 1x, at zero ruin, even with 1929 in the pool. Premium
+  collected every (mostly-calm) month compounds into a buffer that absorbs the
+  small crash loss taken on a fraction of notional.
+- **The cliff is between 0.5 and 1.0**, not in the strategy. 0.75 leaks a little
+  ruin (1.2%); 1.0 overwhelms the buffer -> 5th-pct collapses to 0x, 7.2% ruin.
+- Dose-response: each +0.25 ratio adds ~+2.3 pts median CAGR; free on the tail up
+  to 0.5, toxic by 1.0. **Right-sizing (~0.25, up to ~0.5) is the conclusion** --
+  the "pennies in front of a steamroller" failure was full-notional sizing.
