@@ -98,6 +98,7 @@ def run_path(
     put_K = 0.0
     put_notional = 0.0
     put_open_i = -1
+    wing_K = 0.0  # long protective-wing strike (0 = naked put, no spread)
 
     for k in range(len(rolls)):
         i = rolls[k]
@@ -108,24 +109,31 @@ def run_path(
         #    value (intrinsic + remaining time value) and pay the spread -- not
         #    intrinsic, which would hand the writer an unearned time-value windfall.
         if put_units > 0.0 and not ruined:
+            # value = short leg minus long wing (wing_K=0 -> naked put)
             if final:
                 elapsed = (dates[i] - dates[put_open_i]).days / 365.25
                 remaining = max(T - elapsed, 0.0)
                 if remaining > 1e-6:
                     base_sig = sigma[i] * (cfg.vrp_markup if cfg.vrp_mode == "marked_up" else 1.0)
-                    eff_sigma = base_sig + cfg.skew_slope * max((S[i] - put_K) / S[i], 0.0)
-                    settle_val = bs_put(S[i], put_K, remaining, rf_annual[i], eff_sigma, div_yield[i]) * put_units
-                    equity -= cfg.spread_frac * settle_val  # spread paid to close early
+                    eff_s = base_sig + cfg.skew_slope * max((S[i] - put_K) / S[i], 0.0)
+                    short_v = bs_put(S[i], put_K, remaining, rf_annual[i], eff_s, div_yield[i])
+                    wing_v = 0.0
+                    if wing_K > 0.0:
+                        eff_w = base_sig + cfg.skew_slope * max((S[i] - wing_K) / S[i], 0.0)
+                        wing_v = bs_put(S[i], wing_K, remaining, rf_annual[i], eff_w, div_yield[i])
+                    equity -= cfg.spread_frac * (short_v + wing_v) * put_units  # close both legs
+                    settle_val = (short_v - wing_v) * put_units
                 else:
-                    settle_val = max(put_K - S[i], 0.0) * put_units
+                    settle_val = (max(put_K - S[i], 0.0) - max(wing_K - S[i], 0.0)) * put_units
                 equity += put_sign * settle_val
             else:
-                payoff = max(put_K - S[i], 0.0) * put_units
+                payoff = (max(put_K - S[i], 0.0) - max(wing_K - S[i], 0.0)) * put_units
                 equity += put_sign * payoff
             if equity <= maint:
                 ruined = True
                 equity = 0.0
         put_units = 0.0
+        wing_K = 0.0
         if record_curve:
             curve_idx.append(i)
             curve_val.append(max(equity, 0.0))
@@ -148,16 +156,27 @@ def run_path(
             notional = ratio * equity
             units = notional / Si
             price = bs_put(Si, K, T, rf_annual[i], eff_sigma, div_yield[i])
-            equity -= put_sign * price * units
-            # bid/ask: you transact worse than mid, so the spread always costs
-            # you (less premium when selling, more when buying).
-            equity -= cfg.spread_frac * price * units
+            # optional long wing -> short put SPREAD (same quantity, further OTM)
+            Kw = 0.0
+            wing_price = 0.0
+            if cfg.wing_delta is not None or cfg.wing_moneyness is not None:
+                if cfg.wing_delta is not None:
+                    Kw = delta_strike(Si, abs(cfg.wing_delta), T, rf_annual[i], base_sig, div_yield[i])
+                else:
+                    Kw = (1.0 - cfg.wing_moneyness) * Si
+                eff_w = base_sig + cfg.skew_slope * max((Si - Kw) / Si, 0.0)
+                wing_price = bs_put(Si, Kw, T, rf_annual[i], eff_w, div_yield[i])
+            net_price = price - wing_price  # net credit (sell) / cost (buy) of the structure
+            equity -= put_sign * net_price * units
+            # bid/ask: you cross the spread on every leg you trade.
+            equity -= cfg.spread_frac * (price + wing_price) * units
             if equity <= maint:
                 ruined = True
                 equity = 0.0
             else:
                 put_units = units
                 put_K = K
+                wing_K = Kw
                 put_notional = notional
                 put_open_i = i
 
@@ -178,7 +197,10 @@ def run_path(
         mark_short = short_put and cfg.maint_margin_frac > 0.0
         check_path = path
         if put_units > 0.0 and (cfg.put_mtm_for_liquidation or mark_short):
-            intrinsic = np.maximum(put_K - S[a:b], 0.0) * put_units
+            # net intrinsic of the structure (short leg minus long wing); the
+            # wing caps the loss, so a spread's mark is bounded by its width.
+            intrinsic = (np.maximum(put_K - S[a:b], 0.0)
+                         - np.maximum(wing_K - S[a:b], 0.0)) * put_units
             check_path = path + put_sign * intrinsic
 
         # Liquidation threshold per day: an absolute floor (maintenance_frac),
@@ -190,7 +212,11 @@ def run_path(
             period_start_eq = _period_start_equity(path, seg_ms, equity, cfg.rebalance)
             req = cfg.maint_margin_frac * L * period_start_eq
             if short_put:
-                req = req + cfg.maint_margin_frac * put_notional
+                if wing_K > 0.0:
+                    # defined-risk spread: margin is the (bounded) max loss
+                    req = req + (put_K - wing_K) * put_units
+                else:
+                    req = req + cfg.maint_margin_frac * put_notional
             thresh = np.maximum(maint, req)
         else:
             thresh = maint

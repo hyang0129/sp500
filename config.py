@@ -25,6 +25,11 @@ class Config:
     # sells the 25-delta put -- a vol-adaptive strike). Overrides put_moneyness
     # for strike selection when set.
     put_delta: Optional[float] = None
+    # Optional long protective WING (a further-OTM put bought against the short
+    # leg, same quantity) -> a defined-risk short put SPREAD. Specify by delta
+    # (must be < put_delta, i.e. further OTM) or by moneyness (> put_moneyness).
+    wing_delta: Optional[float] = None
+    wing_moneyness: Optional[float] = None
     # Linear vol skew (points of vol per unit OTM fraction) added to the pricing
     # sigma for OTM puts: eff_sigma = base + skew_slope*max((S-K)/S, 0). 0.0 =
     # flat (no skew). ~0.6-0.8 approximates 1-month SPX put skew.
