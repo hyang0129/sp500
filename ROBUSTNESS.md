@@ -231,11 +231,17 @@ Depression reruns are in `output/put_selling_margin.csv` and
   work (esp. put-writing) should use `history="all"` (1928+); §5a shows it is
   decisive. Cross-country panels (DMS / Jordà-Schularick-Taylor) remain the fix
   for impairments the US never had at all (Japan-1990).
-- The put-expiry-at-measurement-date convention in the path engine is unchanged.
+- Active option management (early roll, profit-taking, delta hedging) is not
+  modeled -- puts are held to their natural expiry.
 
 Resolved since the first draft: short-option margin (§5a, writers can now be
-margin-called) and crash-clustering sensitivity (block length 21/63/126 barely
-moves results -- §5a).
+margin-called); crash-clustering sensitivity (block length 21/63/126 barely
+moves results -- §5a); execution cost (§9); and the end-of-window **stub**, which
+is now closed at market value (intrinsic + remaining time value, less spread)
+instead of intrinsic -- previously a small unearned time-value windfall to the
+writer on the final roll of each window. Impact is negligible (one roll per
+window; the 5%OTM r0.5 combo is unchanged to displayed precision), so all tables
+above stand.
 
 ### 5b. Position sizing is the whole game: put-writing by notional ratio
 

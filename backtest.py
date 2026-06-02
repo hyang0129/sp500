@@ -97,14 +97,31 @@ def run_path(
     put_units = 0.0
     put_K = 0.0
     put_notional = 0.0
+    put_open_i = -1
 
     for k in range(len(rolls)):
         i = rolls[k]
-        # 1) Cash-settle the put from the previous roll (payoff at expiry).
-        #    Long (+): receive payoff. Short (-): pay it -> can drive ruin.
+        final = k == len(rolls) - 1
+        # 1) Close the put from the previous roll. At its natural expiry (every
+        #    normal roll) this is a cash settlement at intrinsic. At the FINAL
+        #    roll the window cuts the option's life short, so close it at MARKET
+        #    value (intrinsic + remaining time value) and pay the spread -- not
+        #    intrinsic, which would hand the writer an unearned time-value windfall.
         if put_units > 0.0 and not ruined:
-            payoff = max(put_K - S[i], 0.0) * put_units
-            equity += put_sign * payoff
+            if final:
+                elapsed = (dates[i] - dates[put_open_i]).days / 365.25
+                remaining = max(T - elapsed, 0.0)
+                if remaining > 1e-6:
+                    base_sig = sigma[i] * (cfg.vrp_markup if cfg.vrp_mode == "marked_up" else 1.0)
+                    eff_sigma = base_sig + cfg.skew_slope * max((S[i] - put_K) / S[i], 0.0)
+                    settle_val = bs_put(S[i], put_K, remaining, rf_annual[i], eff_sigma, div_yield[i]) * put_units
+                    equity -= cfg.spread_frac * settle_val  # spread paid to close early
+                else:
+                    settle_val = max(put_K - S[i], 0.0) * put_units
+                equity += put_sign * settle_val
+            else:
+                payoff = max(put_K - S[i], 0.0) * put_units
+                equity += put_sign * payoff
             if equity <= maint:
                 ruined = True
                 equity = 0.0
@@ -142,6 +159,7 @@ def run_path(
                 put_units = units
                 put_K = K
                 put_notional = notional
+                put_open_i = i
 
         # 3) Run the leverage engine over the segment [i, rolls[k+1]].
         a, b = i + 1, rolls[k + 1] + 1  # daily returns from day after roll to next roll
