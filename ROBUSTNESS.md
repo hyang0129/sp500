@@ -380,3 +380,35 @@ on T-bills instead (leverage=0) isolates the put leg -- cash-secured writing.
 Three animals: combo r0.5 = growth (11.7%, deep drawdowns); cash-secured puts =
 income + downside safety (5-7%, shallow drawdowns, best tail); naked 1x in
 between. The legs are each fine; the danger is running both hot together.
+
+## 9. Pricing assumption & execution cost — is the put "correctly priced"?
+
+The strategy is a price-*taker*: it sells at the market implied vol (VIX + skew),
+not at a self-assessed fair value. A single option has no observable correct
+price (BS fair value needs the unknowable future realized vol), so the edge is
+NOT a mispricing claim -- it is the structural VRP (sec 6: VIX ~1.3x subsequent
+realized, positive 86% of months), harvested on average as pay for crash risk.
+
+The one place "assume the market/mid price" flattered the backtest is execution:
+we priced at mid, but a writer sells at the bid. `config.spread_frac` models the
+half-spread as a fraction of premium (`output/spread_sensitivity.csv`,
+5%OTM r0.5 combo, 20y):
+
+| spread (% of premium) | median CAGR | 5th-pct wealth |
+|---|---|---|
+| naked 1x | 10.1% | 1.71x |
+| 0% (mid) | 11.7% | 1.77x |
+| 2% (liquid institutional) | 11.6% | 1.74x |
+| 5% (realistic) | 11.5% | 1.70x |
+| 10% (retail-ish) | 11.2% | 1.62x |
+| 20% (poor retail) | 10.7% | 1.47x |
+
+- The edge **survives realistic execution (2-5%)** nearly intact, **erodes by
+  10%**, and is **gone by ~20%**. Real but thin -- execution quality matters.
+- Spread modeled as a fraction of premium; OTM puts have small premia but not
+  proportionally small dollar spreads, so deep-OTM writing (sec 7) is MORE
+  spread-sensitive than this shows -- part of the OTM edge is given back.
+
+Takeaway: you can't verify a single put is correctly priced and you don't need
+to; you transact at market and harvest the structural premium, sized for the 14%
+of months the market's price proves too low, and you defend your execution.

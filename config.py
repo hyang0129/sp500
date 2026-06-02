@@ -49,6 +49,12 @@ class Config:
     #                 premium (index puts trade richer than BS-fair).
     vrp_mode: str = "fair"
     vrp_markup: float = 1.2
+    # Execution cost as a fraction of premium (the bid/ask half-spread you give
+    # up): you always transact worse than mid, so this is subtracted from the
+    # premium received (selling) or added to the premium paid (buying). 0.0 =
+    # trade at mid (the idealized assumption). ~0.02-0.05 is realistic for
+    # liquid 1-month index options; retail/illiquid is worse.
+    spread_frac: float = 0.0
     # Where the pricing vol comes from: "vix" (preferred, /100) with fallback
     # to trailing realized vol when VIX is unavailable; or "realized" always.
     vol_source: str = "vix"

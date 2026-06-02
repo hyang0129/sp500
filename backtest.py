@@ -132,6 +132,9 @@ def run_path(
             units = notional / Si
             price = bs_put(Si, K, T, rf_annual[i], eff_sigma, div_yield[i])
             equity -= put_sign * price * units
+            # bid/ask: you transact worse than mid, so the spread always costs
+            # you (less premium when selling, more when buying).
+            equity -= cfg.spread_frac * price * units
             if equity <= maint:
                 ruined = True
                 equity = 0.0
