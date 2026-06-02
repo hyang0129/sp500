@@ -351,3 +351,32 @@ versus naked 1x, and dominates plain leverage at matched return. Sized to full
 notional or struck ATM it gives back the tail; struck too far OTM it collects too
 little. Conclusion rests on the skew assumption (slope 0.7) and the standing
 caveats (single-country pool, additive intra-month path => ruin is a floor).
+
+## 8. Decomposing the combo: 1x alone vs puts alone vs both
+
+Every put-write cell above is the *combo* (long 1x futures AND short puts). Held
+on T-bills instead (leverage=0) isolates the put leg -- cash-secured writing.
+`output/combo_decomp.csv` (20y, fair+skew, 1928+ pool, 15% margin, 5%OTM):
+
+| strategy | median CAGR | 5th-pct wealth | MDD_p95 | P(ruin) |
+|---|---|---|---|---|
+| 1x only (beta) | 10.1% | 1.69x | 70% | 0% |
+| cash only (rf) | 3.2% | 1.64x | 0% | 0% |
+| puts-only 5%OTM r0.5 (cash-secured) | 5.2% | 2.06x | 17% | 0% |
+| COMBO 1x+5%OTM r0.5 | 11.7% | 1.77x | 77% | 0% |
+| puts-only 5%OTM r1.0 (cash-secured) | 7.1% | 2.23x | 33% | 0% |
+| COMBO 1x+5%OTM r1.0 | 13.3% | 0.00x | 100% | 5.8% |
+
+- **Return is ~additive**: combo median ~= 1x beta + the put leg's carry over cash
+  (10.1% + (5.2-3.2) ~= 11.7%).
+- **The combo doubles the downside** (long index AND short puts both lose in a
+  crash) -- that stacking is the entire source of put-write ruin. Full-notional
+  combo wipes (0x tail, 5.8% ruin); moderate combo (r0.5) is fine (1.77x, 0 ruin).
+- **Cash-secured writing alone is a different, safer animal**: the short put is
+  the only downside and the strike caps it, so it survives 1929 even at full
+  notional (2.23x tail, 33% MDD, 0 ruin) -- a *better* tail than holding 1x at
+  all, for a lower median (~5-7%). The classic CBOE-PUT profile.
+
+Three animals: combo r0.5 = growth (11.7%, deep drawdowns); cash-secured puts =
+income + downside safety (5-7%, shallow drawdowns, best tail); naked 1x in
+between. The legs are each fine; the danger is running both hot together.
