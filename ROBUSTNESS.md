@@ -418,3 +418,33 @@ half-spread as a fraction of premium (`output/spread_sensitivity.csv`,
 Takeaway: you can't verify a single put is correctly priced and you don't need
 to; you transact at market and harvest the structural premium, sized for the 14%
 of months the market's price proves too low, and you defend your execution.
+
+## 10. Put spreads vs naked writes: a substitute for sizing down
+
+Adding a long protective wing (config `wing_delta`) turns a naked short put into
+a defined-risk short put SPREAD (25-delta short, 10/20-delta wing). Ratio 0.25,
+25d short, fair+skew, 1928+ pool, 15% margin (`output/put_spreads.csv`,
+`output/put_spreads_r1.csv`).
+
+20-year combo (1x + structure):
+
+| structure | ratio | median CAGR | 5th-pct wealth | MDD_p95 | P(ruin) |
+|---|---|---|---|---|---|
+| short 25d naked | 0.25 | 10.9% | 1.74x | 73% | 0% |
+| 25/20 spread | 0.25 | 10.2% | 1.69x | 70% | 0% |
+| 25/10 spread | 0.25 | 10.5% | 1.71x | 71% | 0% |
+| short 25d naked | 1.0 | 12.9% | **0.00x** | 100% | **5.6%** |
+| 25/10 spread | 1.0 | 11.2% | **1.71x** | 75% | 0% |
+
+- **At ratio 0.25 the wing is not worth it.** The naked 25d at a quarter notional
+  already has zero ruin and a tail above naked 1x, so the wing only bleeds
+  premium and slightly *worsens* the 5th percentile (1.74 -> 1.69-1.71). You are
+  insuring a catastrophe that, at this size, cannot hurt you.
+- **At full notional the wing is essential**: it converts the naked blow-up (0x
+  tail, 5.6% ruin) into a safe position (1.71x tail, 0 ruin) for ~1.7 pts of
+  median. The bounded max loss removes the ruin cliff.
+- **A spread is a substitute for sizing down, not a complement.** Two routes to
+  ~11% median / 0 ruin land in the same place: naked 25d at r0.25 (10.9%, 1.74x,
+  73% MDD) vs 25/10 spread at r1.0 (11.2%, 1.71x, 75% MDD). Sell-less and
+  buy-a-wing are interchangeable tail controls; doing both (a wing at r0.25) just
+  pays twice for one problem. Use the wing to run LARGE notional safely.
