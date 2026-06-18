@@ -448,3 +448,35 @@ a defined-risk short put SPREAD (25-delta short, 10/20-delta wing). Ratio 0.25,
   73% MDD) vs 25/10 spread at r1.0 (11.2%, 1.71x, 75% MDD). Sell-less and
   buy-a-wing are interchangeable tail controls; doing both (a wing at r0.25) just
   pays twice for one problem. Use the wing to run LARGE notional safely.
+
+## 11. Leaderboard: what works best over the long run
+
+All contenders on one identical basis (1928+ pool incl. 1929, 15% margin,
+realistic fair+skew pricing, n=1000, `output/championship.csv`). 20-year,
+sorted by median terminal wealth:
+
+| strategy | median CAGR | median wealth | 5th-pct | MDD | ruin |
+|---|---|---|---|---|---|
+| 1.5x futures | 12.3% | 10.1x | 1.09x | 88% | 0.1% |
+| 1x + 5%OTM r0.5 | 11.7% | 9.2x | 1.70x | 77% | 0% |
+| 2.0x futures | 14.2% | 8.9x | 0.00x | 100% | 17.5% |
+| 1x + 25/10 spread r1.0 | 11.2% | 8.4x | 1.60x | 76% | 0% |
+| 1x + 5%OTM r0.25 | 11.0% | 8.1x | 1.67x | 73% | 0% |
+| 1x + 10%OTM r0.25 | 10.7% | 7.6x | 1.69x | 71% | 0% |
+| naked 1x (buy&hold) | 10.1% | 6.9x | 1.62x | 71% | 0% |
+| cash-secured 5%OTM r1.0 | 7.0% | 3.9x | 2.26x | 33% | 0% |
+
+- **Best improvement on buy-and-hold (more growth AND safer tail): 1x + ~5-10%
+  OTM short puts at ratio 0.25-0.5.** Every such variant beats naked 1x on both
+  median and tail; r0.5 mildly dominates r0.25 (more median, ~= tail, deeper DD).
+- **Most raw growth: 1.5x futures** (10.1x wealth) -- but a far worse tail
+  (1.09x) and 88% drawdowns; lower risk-adjusted than the put overlay.
+- **Avoid 2x over long horizons**: top median CAGR but lower median *wealth*
+  (ruins drag it) and a wiped tail.
+- **Most defensive: cash-secured put-writing** (2.26x tail, 33% DD), at ~3 pts
+  less CAGR.
+
+Caveats stand: the put-overlay edge is modest (~+1 to +1.6 pts CAGR) and
+execution-sensitive; the US pool always recovered (no Japan-1990 impairment);
+the top several are within bootstrap + assumption noise; all growth options sit
+through 70-88% drawdowns. Untested frontier: leverage + put-overlay combined.
