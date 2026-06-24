@@ -480,3 +480,33 @@ Caveats stand: the put-overlay edge is modest (~+1 to +1.6 pts CAGR) and
 execution-sensitive; the US pool always recovered (no Japan-1990 impairment);
 the top several are within bootstrap + assumption noise; all growth options sit
 through 70-88% drawdowns. Untested frontier: leverage + put-overlay combined.
+
+## 12. Dollar-cost averaging (monthly contributions from wages)
+
+`config.contribution` / `equity0` add monthly DCA; in DCA mode a liquidation is
+RECOVERABLE (zeroes the account but contributions resume). Metric switches to
+ending MULTIPLE of total contributions and money-weighted IRR
+(`output/dca_results.csv`). 20-year, $5k/mo from $0 ($1.2M paid in):
+
+| strategy | median mult | 5th-pct mult | median IRR | P(underwater) | P(ever liq.) |
+|---|---|---|---|---|---|
+| naked 1x | 3.28x | 1.32x | 10.5% | 2.0% | 0% |
+| 1x + 5%OTM r0.5 | 3.95x | 1.37x | 12.0% | 2.2% | 0% |
+| 1x + 5%OTM r0.25 | 3.56x | 1.36x | 11.2% | 2.0% | 0% |
+| 1.5x futures | 4.43x | 1.09x | 13.0% | 3.8% | 0% |
+| 1.5x + 5%OTM r0.5 | 4.97x | 0.79x | 13.9% | 7.1% | 6.2% |
+| 2.0x futures | 5.08x | 0.53x | 14.1% | 11.1% | 11.1% |
+
+- **DCA rehabilitates leverage.** Lump-sum 2x was a 17.5%-ruin disaster; under DCA
+  the wipeout is recoverable (you keep buying), so 2x's worst case is 0.53x
+  contributions, not zero. Leverage looks far less reckless when contributions
+  rebuild through the crash. 1.5x DCA is now quite defensible (1.09x floor).
+- **The winner is unchanged**: 1x + ~5% OTM puts (r0.25-0.5) still beats buy-and-
+  hold on both median and floor, never liquidates, lowest underwater prob.
+- **Risk shifts to LATE crashes** (the balance is largest near the end): a year-2
+  crash helps (buy cheap), a year-18 crash hurts. Hence 5y DCA is risky (12-21%
+  end underwater) while 20y DCA's safe-strategy floor is ~1.3x.
+- **Stacking leverage + short-vol (1.5x + puts) adds real downside** -- nearly 2x's
+  growth but 7% underwater / 6% liquidation; a higher-octane option, not free.
+- **2x is still the line not to cross**: 11% of 20-year savers end below what they
+  paid in even with contributions cushioning.

@@ -87,6 +87,14 @@ class Config:
     use_total_return: bool = True  # use ^SP500TR when available
     div_yield: float = 0.018  # annual; used for BS q and price->TR add-back
 
+    # --- contributions (dollar-cost averaging from wages) -----------------
+    # Add `contribution` to equity at each monthly roll; equity0 is the starting
+    # balance (both in the same units, e.g. units of one monthly contribution).
+    # In DCA mode (contribution>0) a margin liquidation is RECOVERABLE: it zeroes
+    # the account but contributions resume next month (you keep your job).
+    contribution: float = 0.0
+    equity0: float = 1.0
+
     # --- data --------------------------------------------------------------
     data_path: str = "data/sp500_daily.csv"
     trading_days_per_year: int = 252

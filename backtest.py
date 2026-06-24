@@ -28,6 +28,8 @@ class PathResult:
     ruined: bool
     log_terminal: float             # log(terminal_wealth); -inf treated below
     curve: Optional[pd.Series] = None  # daily equity path (if record_curve)
+    contributed: float = 1.0        # total paid in (equity0 + sum contributions)
+    n_liquidations: int = 0         # times the account was wiped (DCA: recoverable)
 
 
 def _roll_indices(dates: pd.DatetimeIndex, start_i: int, end_i: int, period_years: float) -> List[int]:
@@ -90,8 +92,8 @@ def run_path(
 
     rolls = _roll_indices(dates, start_i, end_i, T)
 
-    equity = 1.0
-    peak = 1.0
+    equity = cfg.equity0
+    peak = cfg.equity0
     max_dd = 0.0
     ruined = False
     put_units = 0.0
@@ -99,10 +101,21 @@ def run_path(
     put_notional = 0.0
     put_open_i = -1
     wing_K = 0.0  # long protective-wing strike (0 = naked put, no spread)
+    dca = cfg.contribution > 0.0
+    contributed = cfg.equity0
+    n_liq = 0
 
     for k in range(len(rolls)):
         i = rolls[k]
         final = k == len(rolls) - 1
+        # Dollar-cost averaging: fresh wages arrive each month and reactivate a
+        # previously-liquidated account (you keep your job and keep saving).
+        if dca and not final:
+            equity += cfg.contribution
+            contributed += cfg.contribution
+            if ruined:
+                ruined = False
+                put_units = 0.0
         # 1) Close the put from the previous roll. At its natural expiry (every
         #    normal roll) this is a cash settlement at intrinsic. At the FINAL
         #    roll the window cuts the option's life short, so close it at MARKET
@@ -226,6 +239,7 @@ def run_path(
             path = path.copy()
             path[first:] = 0.0
             ruined = True
+            n_liq += 1
         elif breach.size > 0 and not daily_check:
             # month_end model: only liquidate if a *month-end* mark breaches.
             ms_idx = np.flatnonzero(seg_ms)
@@ -250,6 +264,7 @@ def run_path(
         if equity <= maint:
             ruined = True
             equity = 0.0
+            n_liq += 1
         if record_curve:
             curve_idx.extend(range(a, b))
             curve_val.extend(path.tolist())
@@ -280,6 +295,8 @@ def run_path(
         ruined=ruined,
         log_terminal=log_terminal,
         curve=curve,
+        contributed=contributed,
+        n_liquidations=n_liq,
     )
 
 
