@@ -182,3 +182,21 @@ python stress_report.py   # charts -> output/volcker_*.png
 Headline: at the stated size it survives (3.3-4.8x, 24-31% max drawdown, no
 margin call); at **3x the size it is margin-called in March 1980**. The risk is
 curve *flattening*, not the level of rates.
+
+### Recession scorecard
+
+`recessions.py` runs the futures book through every NBER recession since 1976
+(default: $100k, 2 MES / 4 ZT / -2 ZN, a 2s10s steepener). See
+[`RECESSIONS.md`](RECESSIONS.md).
+
+```bash
+python recessions.py --chart          # table + output/recession_scorecard.png
+python recessions.py --mes 2 --zt 4 --zn -2 --equity 100000 --mode level
+```
+
+Headline: the book profited in **all six** recessions since 1976 - a recession
+is the Fed cutting the front end, which steepens the curve. Its one bad window
+is the *pre-recession inversion*: -23% in the 12 months to July 1981, when 2s10s
+hit -194bp. The continuous 1979-1984 Volcker path draws down 37.7% to $74,455
+but is never margin-called and ends at 2.06x; at 2.5x the size it *is*
+margin-called in March 1980.
