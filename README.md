@@ -157,3 +157,28 @@ realistic option costs).
    high-rate regime, but not the 1970s–80s high-inflation/high-rate era (no TR
    index). 20y-window conclusions are sensitive to the fact that *every* 20y
    window in-sample fully recovered.
+
+---
+
+## Volcker-era futures stress test
+
+A second study in this repo stress-tests a **futures portfolio** (long 1-2 MES +
+long 2 ZT + short 1 ZN on $80k) through the daily deltas of the 1979-1989
+Volcker inflation cycle. See [`STRESS_VOLCKER.md`](STRESS_VOLCKER.md).
+
+```bash
+python fetch_rates.py     # Fed GSW curve -> data/treasury_yields_daily.csv (2y/5y/6y/7y/10y par yields)
+python stress_test.py     # headline table
+python stress_report.py   # charts -> output/volcker_*.png
+```
+
+| file | role |
+|---|---|
+| `futures.py` | MES/ZT/ZN contract specs, full bond repricing (convexity), DV01 |
+| `stress_test.py` | collateralized-futures engine + Volcker delta/level replay |
+| `stress_report.py` | equity-curve, attribution and breaking-point charts |
+| `fetch_rates.py` | sources 2y/10y Treasury par yields from the Fed GSW curve |
+
+Headline: at the stated size it survives (3.3-4.8x, 24-31% max drawdown, no
+margin call); at **3x the size it is margin-called in March 1980**. The risk is
+curve *flattening*, not the level of rates.
