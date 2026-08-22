@@ -200,3 +200,21 @@ is the *pre-recession inversion*: -23% in the 12 months to July 1981, when 2s10s
 hit -194bp. The continuous 1979-1984 Volcker path draws down 37.7% to $74,455
 but is never margin-called and ends at 2.06x; at 2.5x the size it *is*
 margin-called in March 1980.
+
+### Flattening screen — does the steepener overlay earn its keep?
+
+`inversions.py` screens 1976-2026 for the worst curve-flattening episodes
+(regardless of recession) and compares the full book against **2 MES alone**.
+See [`INVERSIONS.md`](INVERSIONS.md).
+
+```bash
+python inversions.py --chart      # episode table + rolling comparison + charts
+```
+
+Headline: the overlay loses in **8 of 8** flattening episodes (avg -24pp), and
+its worst case is **2022 (-32.5%)**, not Volcker - because stocks and the curve
+sold off together. It *is* a real equity hedge in recessions (+21pp average,
+turning the GFC from -24.0% into +3.5%), but risk-adjusted it is dominated:
+over 180 rolling 5y windows the full book returns +83.7% median at a 21.4%
+median drawdown, while plain **3x MES** returns **+105.7%** at a comparable
+23.5% drawdown.
