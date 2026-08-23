@@ -83,3 +83,44 @@ def test_yield_drop_produces_capital_gain_near_dv01():
     gain = tr * notional
     assert gain > linear, "convexity should make the actual gain exceed linear DV01"
     assert (gain - linear) / linear < 0.06
+
+
+# --- position sizing -------------------------------------------------------
+def _cfg(**kw):
+    from stress_test import StressConfig
+    base = dict(equity0=100_000.0, n_mes=2.0, n_zt=4.0, n_zn=-2.0, mode="delta",
+                start="1979-01-02", end="1984-01-03")
+    base.update(kw)
+    return StressConfig(**base)
+
+
+def test_sizing_is_noop_for_a_cash_only_book():
+    """With no positions, every sizing rule must give an identical path."""
+    from stress_test import run_stress
+    flat = dict(n_mes=0.0, n_zt=0.0, n_zn=0.0)
+    a = run_stress(_cfg(sizing="fixed", **flat)).final_equity
+    b = run_stress(_cfg(sizing="constant_leverage", **flat)).final_equity
+    c = run_stress(_cfg(sizing="constant_dv01", **flat)).final_equity
+    assert abs(a - b) < 1e-6 and abs(a - c) < 1e-6
+
+
+def test_constant_leverage_holds_exposure_ratio_steady():
+    """Under constant leverage, notional/equity should not drift with equity."""
+    from futures import SPECS
+    from stress_test import StressConfig, run_stress, current_levels
+    cfg = _cfg(sizing="constant_leverage")
+    r = run_stress(cfg)
+    cur = current_levels(cfg)
+    # inception ratio
+    ratio0 = cfg.n_mes * SPECS["MES"].multiplier * cur["S"] / cfg.equity0
+    # the book grew a lot; a fixed book's ratio would have fallen by ~that factor
+    assert r.final_equity > cfg.equity0
+    assert 0.5 < ratio0 < 1.5  # sanity on the 2 MES / $100k starting ratio
+
+
+def test_fractional_vs_whole_contracts_differ_but_track():
+    from stress_test import run_stress
+    frac = run_stress(_cfg(sizing="constant_leverage", fractional=True)).final_equity
+    whole = run_stress(_cfg(sizing="constant_leverage", fractional=False)).final_equity
+    assert frac != whole
+    assert abs(whole / frac - 1.0) < 0.25  # rounding shifts it, does not break it

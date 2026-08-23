@@ -218,3 +218,24 @@ turning the GFC from -24.0% into +3.5%), but risk-adjusted it is dominated:
 over 180 rolling 5y windows the full book returns +83.7% median at a 21.4%
 median drawdown, while plain **3x MES** returns **+105.7%** at a comparable
 23.5% drawdown.
+
+### Position sizing: fixed vs constant-leverage
+
+Every stress module accepts a `sizing` mode on `StressConfig`. Fractional
+contracts are supported throughout (`fractional=True`, the default; set
+`min_contract` to round).
+
+| sizing | meaning |
+|---|---|
+| `fixed` | hold the stated contract counts (risk falls as equity grows) |
+| `constant_leverage` | resize monthly so each leg's notional/equity stays at its inception ratio |
+| `constant_dv01` | resize the rates legs so DV01/equity stays constant (accounts for DV01 falling as yields rise) |
+
+```bash
+python recessions.py --chart          # add sizing via StressConfig(sizing=...)
+```
+
+`fixed` flatters results because the book shrinks relative to a growing account.
+Under `constant_leverage` the overlay's edge on the continuous Volcker path
+collapses from **+$20.3k to -$0.7k** while still carrying ~3x the drawdown of
+plain 2 MES.

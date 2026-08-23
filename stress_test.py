@@ -40,6 +40,19 @@ class StressConfig:
     mode: str = "delta"           # "delta" | "level"
     div_yield: float = 0.045      # S&P dividend yield in that era (~4.5%)
     roll_months: int = 3          # quarterly futures roll
+
+    # --- position sizing ---------------------------------------------------
+    # "fixed"              hold the stated contract counts for the whole window
+    #                      (risk falls as equity grows, rises as it shrinks)
+    # "constant_leverage"  resize so each leg's NOTIONAL/equity stays at its
+    #                      inception ratio  (the honest constant-risk book)
+    # "constant_dv01"      resize the rates legs so DV01/equity stays constant;
+    #                      differs from notional-matching because DV01 per
+    #                      contract falls as yields rise (convexity)
+    sizing: str = "fixed"
+    resize_months: int = 1        # how often positions are resized
+    fractional: bool = True       # allow fractional contracts
+    min_contract: float = 0.0     # round positions to this increment if > 0
     rate_floor: float = 0.0005    # floor rates at 5bp in delta mode
     margin_mult: float = 1.0      # stress multiplier on maintenance margin
     equity_path: str = "data/sp500_daily.csv"
@@ -132,11 +145,47 @@ def run_stress(cfg: StressConfig, verbose: bool = False) -> StressResult:
     zt.roll(y2[0])
     zn.roll(y65[0])
 
-    margin_req = cfg.margin_mult * (
-        abs(cfg.n_mes) * SPECS["MES"].maint_margin
-        + abs(cfg.n_zt) * SPECS["ZT"].maint_margin
-        + abs(cfg.n_zn) * SPECS["ZN"].maint_margin
-    )
+    # Inception exposure ratios, used to resize under non-fixed sizing.
+    mes_ratio = cfg.n_mes * SPECS["MES"].multiplier * S[0] / cfg.equity0
+    zt_face_ratio = cfg.n_zt * SPECS["ZT"].face / cfg.equity0
+    zn_face_ratio = cfg.n_zn * SPECS["ZN"].face / cfg.equity0
+    zt_dv01_ratio = cfg.n_zt * dv01(y2[0], y2[0], 2.0, SPECS["ZT"].face) / cfg.equity0
+    zn_dv01_ratio = cfg.n_zn * dv01(y65[0], y65[0], 6.5, SPECS["ZN"].face) / cfg.equity0
+
+    def _round(x: float) -> float:
+        if cfg.fractional and cfg.min_contract <= 0:
+            return x
+        step = cfg.min_contract if cfg.min_contract > 0 else 1.0
+        return float(np.round(x / step) * step)
+
+    def sized(equity_now: float, i: int) -> tuple[float, float, float]:
+        """Contract counts for the current equity under the chosen sizing rule."""
+        if cfg.sizing == "fixed":
+            return cfg.n_mes, cfg.n_zt, cfg.n_zn
+        e = max(equity_now, 0.0)
+        n_mes_t = mes_ratio * e / (SPECS["MES"].multiplier * S[i])
+        if cfg.sizing == "constant_leverage":
+            n_zt_t = zt_face_ratio * e / SPECS["ZT"].face
+            n_zn_t = zn_face_ratio * e / SPECS["ZN"].face
+        elif cfg.sizing == "constant_dv01":
+            d_zt = dv01(y2[i], y2[i], 2.0, SPECS["ZT"].face)
+            d_zn = dv01(y65[i], y65[i], 6.5, SPECS["ZN"].face)
+            n_zt_t = zt_dv01_ratio * e / max(d_zt, 1e-9)
+            n_zn_t = zn_dv01_ratio * e / max(d_zn, 1e-9)
+        else:
+            raise ValueError(f"unknown sizing {cfg.sizing}")
+        return _round(n_mes_t), _round(n_zt_t), _round(n_zn_t)
+
+    n_mes_t, n_zt_t, n_zn_t = sized(cfg.equity0, 0)
+
+    def margin_for(a: float, b: float, c: float) -> float:
+        return cfg.margin_mult * (
+            abs(a) * SPECS["MES"].maint_margin
+            + abs(b) * SPECS["ZT"].maint_margin
+            + abs(c) * SPECS["ZN"].maint_margin
+        )
+
+    margin_req = margin_for(n_mes_t, n_zt_t, n_zn_t)
 
     equity = cfg.equity0
     curve = np.empty(n)
@@ -163,12 +212,18 @@ def run_stress(cfg: StressConfig, verbose: bool = False) -> StressResult:
                 zt.roll(y2[i - 1])
                 zn.roll(y65[i - 1])
 
+            # resize the book to the target exposure ratios (non-fixed sizing)
+            if cfg.sizing != "fixed" and months[i] != months[i - 1] \
+                    and (months[i] % cfg.resize_months == 0):
+                n_mes_t, n_zt_t, n_zn_t = sized(equity, i - 1)
+                margin_req = margin_for(n_mes_t, n_zt_t, n_zn_t)
+
             tr_zt, notl_zt = zt.step(y2[i], dt)
             tr_zn, notl_zn = zn.step(y65[i], dt)
-            p_zt = cfg.n_zt * notl_zt * (tr_zt - rf_p)
-            p_zn = cfg.n_zn * notl_zn * (tr_zn - rf_p)
+            p_zt = n_zt_t * notl_zt * (tr_zt - rf_p)
+            p_zn = n_zn_t * notl_zn * (tr_zn - rf_p)
 
-            notl_mes = cfg.n_mes * SPECS["MES"].multiplier * S[i - 1]
+            notl_mes = n_mes_t * SPECS["MES"].multiplier * S[i - 1]
             p_mes = notl_mes * (eq_tr[i] - rf_p)
 
             pnl += p_zt + p_zn + p_mes
