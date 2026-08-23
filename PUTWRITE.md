@@ -128,3 +128,160 @@ in a single month, facing a margin requirement that exploded with vol. The
   implied vol than ATM, so their true premium is higher than modelled — this
   understates the far-OTM seller's income and is the main reason to treat the
   5d-vs-20d ranking as directional rather than exact.
+
+---
+
+# Update: the real skew, measured — and an engine validation that failed
+
+The caveat above ("pricing uses VIX for every strike, so it ignores skew") turned
+out to matter more than flagged, and in **both** directions. Two new data series
+settle it: **^SKEW** (CBOE SKEW index, 1990-2026) and **^PUT** (the real,
+published CBOE S&P 500 PutWrite Index, 1996-2026).
+
+## 1. The engine was wrong, and ^PUT caught it
+
+^PUT sells **at-the-money** 1-month SPX puts fully collateralised — struck ATM,
+so it is almost unaffected by skew. That makes it a clean test of the mechanics.
+
+| | CAGR | vol | maxDD |
+|---|---|---|---|
+| ^PUT (actual) | **8.51%** | 15.2% | 37.1% |
+| my engine, flat-VIX ATM | **13.19%** | 13.9% | 34.9% |
+| difference | **+4.68pp** | −1.4pp | −2.2pp |
+
+Daily return correlation 0.837, annual 0.913 — the *shape* was right, the
+*level* was far too generous. Cause: **VIX is a variance-swap measure that
+integrates across strikes, so a skewed surface puts VIX materially above true
+ATM implied vol.** Selling an ATM put at VIX collects premium that does not
+exist.
+
+Calibrating `ATM IV = VIX - offset` against ^PUT:
+
+| offset | engine CAGR | error vs ^PUT |
+|---|---|---|
+| 0.0p | 13.14% | +4.63pp |
+| 2.0p | 10.06% | +1.55pp |
+| **3.0p** | **8.55%** | **+0.04pp** |
+| 4.0p | 7.06% | −1.45pp |
+
+**3.0 vol points** reproduces the real index. (Pure VIX-minus-ATM is usually
+1-2 points; the remainder absorbs bid-ask, commissions and roll-date differences
+against the real index — so treat 3.0p as a total friction calibration, not a
+pure surface measurement.)
+
+## 2. What the real skew actually looks like
+
+SKEW = 100 − 10·g1, with g1 the risk-neutral skewness of the 30-day return.
+
+| statistic | value |
+|---|---|
+| SKEW median | 119.8 |
+| SKEW p5 / p95 | 109.9 / 147.0 |
+| SKEW max | 183.1 (2025-02-18) |
+| g1 median | **−1.98** |
+| corr(SKEW, VIX) | **−0.17** |
+
+**SKEW is not VIX.** They are essentially uncorrelated (−0.17) — skew tends to
+be *high when VIX is low*, which is complacency plus persistent tail-hedging
+demand. And it has risen structurally:
+
+| decade | median SKEW |
+|---|---|
+| 1990s | 115.3 |
+| 2000s | 116.0 |
+| 2010s | 124.8 |
+| **2020s** | **139.9** |
+
+Translated into vol points above ATM for 1-month SPX (Backus-Foresi-Wu first
+order, dIV/d ln(K/F) = −g1/(6√T)):
+
+| regime | SKEW | 20d | 10d | 5d |
+|---|---|---|---|---|
+| calm (p5) | 109.9 | +2.5p | +3.8p | +4.9p |
+| **median** | 119.8 | **+5.0p** | **+7.6p** | **+9.8p** |
+| stressed (p95) | 147.0 | +11.9p | +18.1p | +23.2p |
+| extreme (max) | 183.1 | +21.0p | +32.0p | +41.0p |
+
+The median row (10d at ATM+7.6p) sits squarely inside the market rule of thumb
+of +5 to +8 points, so the mapping is sane at typical SKEW. It **overshoots at
+extreme SKEW** — +41 points at 5-delta is not a real market — because the
+expansion is first-order.
+
+## 3. The error flips sign across the surface
+
+With ATM = VIX − 3p plus the median smile, at VIX = 18:
+
+| delta | strike | IV sold | vs flat-VIX (18.0%) |
+|---|---|---|---|
+| 50d (ATM) | +0.3% | 15.0% | **3.0p cheaper** |
+| 20d | −4.4% | 20.2% | 2.2p richer |
+| 10d | −8.5% | 25.1% | 7.1p richer |
+| 5d | −13.3% | 31.3% | **13.3p richer** |
+
+So the flat-VIX model **overstated** ATM premium and **understated** far-OTM
+premium — the two errors run in opposite directions, crossing over around
+25-delta.
+
+## 4. Corrected results (1x notional, cash-collateralised, 1990-2026)
+
+| delta | structure | flat-VIX CAGR | **calibrated-skew CAGR** | maxDD | worst intra-month |
+|---|---|---|---|---|---|
+| 5d | hold | 3.79% | **5.79%** | 5.2% | −5.2% |
+| 5d | roll | 2.88% | 5.15% | 5.4% | −4.0% |
+| 10d | hold | 4.95% | **8.28%** | 10.8% | −10.4% |
+| 10d | roll | 3.68% | 6.56% | 10.3% | −8.0% |
+| 20d | hold | 7.17% | **10.60%** | 18.7% | −16.1% |
+| 20d | roll | 5.73% | 6.92% | 17.1% | −13.7% |
+
+Cash baseline 2.75%.
+
+**Hold-to-expiry still beats close-early in every cell**, and by a wider margin
+(20d: 10.60% vs 6.92%). That conclusion strengthens.
+
+## 5. The "5-delta is a bad trade" claim was too strong
+
+| delta | edge over cash, flat-VIX | edge, calibrated skew | Oct-1987 loss | edge per unit of 1987 |
+|---|---|---|---|---|
+| 5d | +1.04pp | **+3.04pp** | −14.4% | 0.211 |
+| 10d | +2.20pp | **+5.53pp** | −16.0% | 0.345 |
+| 20d | +4.42pp | **+7.84pp** | −17.7% | **0.443** |
+
+Skew nearly **triples** the 5-delta edge (1.04 → 3.04pp). 20-delta still wins on
+catastrophe-adjusted efficiency (0.443 vs 0.211), so the ranking does not flip —
+but the gap narrows from 3.5x to 2.1x, and 5-delta becomes a genuinely viable
+trade rather than a near-pointless one.
+
+And on **normal-times** drawdown the ranking actually inverts:
+
+| delta | edge over cash | maxDD | edge per unit of maxDD |
+|---|---|---|---|
+| **5d** | +3.04pp | 5.2% | **0.58** |
+| 10d | +5.53pp | 10.8% | 0.51 |
+| 20d | +7.84pp | 18.7% | 0.42 |
+
+The two metrics disagree, and the disagreement is the real insight: **5-delta is
+the most efficient use of ordinary drawdown, 20-delta the most efficient use of
+catastrophe risk.** In a 1987-style gap the market fell 31.3% and blew through
+both strikes, so being 13% OTM instead of 4% OTM bought far less protection than
+the everyday risk profile suggests.
+
+## 6. Revised recommendation
+
+- The **structure** conclusion is unchanged and now stronger: **1-month, held to
+  expiry**.
+- The **strike** conclusion softens. 20-delta remains the best use of tail risk,
+  but 5- and 10-delta are far more attractive than the flat-VIX model implied,
+  and 5-delta has by far the gentlest ordinary drawdown (5.2% vs 18.7%).
+- **Everything sized off the flat-VIX numbers in the section above was ~3pp/yr
+  too optimistic at ATM.** The calibrated model is the one to size against.
+
+## Remaining caveats on the skew work
+
+- The BFW slope is first-order and overshoots at extreme SKEW; results at the
+  p95+ tail of the SKEW distribution should be treated as indicative.
+- The 3.0p offset is a *total friction* calibration against ^PUT, not a pure
+  measurement of the VIX-ATM gap.
+- The smile is linear in log-moneyness and downside-only; real surfaces curve.
+- SKEW is a 30-day measure applied to the 2-month leg as well.
+- ^PUT itself sells ATM, so it validates the ATM level and the mechanics — it
+  does **not** independently validate the OTM smile slope.

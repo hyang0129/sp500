@@ -75,3 +75,38 @@ def test_hold_to_expiry_beats_closing_early():
     hold = run_putwrite(d, PWConfig(weight=1.0, delta=0.10, structure="hold"))
     roll = run_putwrite(d, PWConfig(weight=1.0, delta=0.10, structure="roll"))
     assert hold.cagr > roll.cagr
+
+
+# --- volatility smile ------------------------------------------------------
+def test_smile_slope_sign_and_magnitude():
+    from putwrite import smile_slope
+    # SKEW = 100 means lognormal: no skew
+    assert abs(smile_slope(100.0, 1 / 12)) < 1e-12
+    # higher SKEW = steeper, and always a positive slope (IV rises as K falls)
+    assert 0 < smile_slope(110.0, 1 / 12) < smile_slope(140.0, 1 / 12)
+
+
+def test_iv_rises_as_strike_falls():
+    from putwrite import iv_at_strike, smile_slope
+    sl = smile_slope(119.8, 1 / 12)
+    assert iv_at_strike(100, 90, 0.15, sl) > iv_at_strike(100, 95, 0.15, sl) > 0.15
+    # upside strikes are not marked up by this downside-only smile
+    assert iv_at_strike(100, 105, 0.15, sl) == 0.15
+
+
+def test_strike_from_delta_smile_is_further_otm_than_flat():
+    """A steeper smile means the same delta sits at a lower strike."""
+    from putwrite import smile_slope, strike_from_delta, strike_from_delta_smile
+    flat = strike_from_delta(100, 0.10, 1 / 12, 0.04, 0.15, 0.018)
+    K, iv = strike_from_delta_smile(100, 0.10, 1 / 12, 0.04, 0.15,
+                                    smile_slope(119.8, 1 / 12), 0.018)
+    assert K < flat and iv > 0.15
+
+
+def test_skew_model_pays_more_for_far_otm_than_flat_vix():
+    """The whole point: flat-VIX underprices the tail a seller is paid for."""
+    d = load()
+    flat = run_putwrite(d, PWConfig(weight=1.0, delta=0.05, structure="hold"))
+    skew = run_putwrite(d, PWConfig(weight=1.0, delta=0.05, structure="hold",
+                                    vol_model="skew", atm_offset=0.03))
+    assert skew.premium_collected > flat.premium_collected

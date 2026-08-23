@@ -66,6 +66,50 @@ def put_margin(S: float, K: float, units: float, premium: float) -> float:
     return (max(a, b) * units) + premium
 
 
+def smile_slope(skew_index: float, T: float, damp: float = 1.0) -> float:
+    """dIV/d(ln K/F) implied by the CBOE SKEW index.
+
+    SKEW = 100 - 10*g1 with g1 the risk-neutral skewness of the 30-day log
+    return. Backus-Foresi-Wu give, to first order,
+        IV(d) ~ sigma * [1 - (g1/6) d],   d = ln(K/F)/(sigma sqrt(T))
+    hence  dIV/d(ln K/F) = -g1 / (6 sqrt(T)).
+    Returns a POSITIVE number: implied vol rises as the strike falls.
+
+    This is a first-order expansion and overshoots badly at extreme SKEW
+    (SKEW 183 implies +41 vol points at 5-delta, which is not a real market),
+    so `damp` scales it and the caller should cap the result.
+    """
+    g1 = (100.0 - skew_index) / 10.0
+    return damp * (-g1) / (6.0 * np.sqrt(T))
+
+
+def iv_at_strike(S: float, K: float, atm_iv: float, slope: float,
+                 cap: float = 0.60) -> float:
+    """Implied vol for a downside strike under a linear-in-log-moneyness smile."""
+    m = np.log(K / S)
+    iv = atm_iv + slope * max(-m, 0.0)
+    return float(min(max(iv, 1e-4), cap))
+
+
+def strike_from_delta_smile(S: float, target_delta: float, T: float, r: float,
+                            atm_iv: float, slope: float, q: float = 0.0,
+                            iters: int = 40) -> tuple[float, float]:
+    """Strike (and its IV) for a given |delta| when IV depends on the strike.
+
+    Delta and IV are mutually dependent, so iterate to a fixed point.
+    """
+    iv = atm_iv
+    K = S
+    for _ in range(iters):
+        K_new = strike_from_delta(S, target_delta, T, r, iv, q)
+        iv_new = iv_at_strike(S, K_new, atm_iv, slope)
+        if abs(K_new - K) < 1e-8 and abs(iv_new - iv) < 1e-10:
+            K, iv = K_new, iv_new
+            break
+        K, iv = K_new, iv_new
+    return K, iv
+
+
 @dataclass
 class PWConfig:
     weight: float = 0.5            # short-put notional as a multiple of equity
@@ -74,6 +118,13 @@ class PWConfig:
     core_leverage: float = 0.0     # long S&P core, monthly reset (0 = cash + puts)
     div_yield: float = 0.018
     margin_mult: float = 1.0
+    # --- volatility surface ---------------------------------------------
+    # "flat_vix"  price every strike at VIX (ignores the smile; overstates ATM
+    #             premium because VIX sits above ATM IV, understates far OTM)
+    # "skew"      ATM IV = VIX - atm_offset, then add a SKEW-driven smile
+    vol_model: str = "flat_vix"
+    atm_offset: float = 0.0      # vol points (decimal) VIX sits above ATM IV
+    skew_damp: float = 1.0       # damping on the Backus-Foresi-Wu slope
     start: str = "1990-01-02"
     end: str = "2026-08-14"
 
@@ -102,6 +153,8 @@ def run_putwrite(data: pd.DataFrame, cfg: PWConfig) -> PWResult:
 
     S = win["S"].to_numpy(float)
     sig = win["sigma"].to_numpy(float)
+    skew = (win["skew"].to_numpy(float) if "skew" in win
+            else np.full(len(win), 119.8))   # median SKEW if unavailable
     rf_a = win["rf_annual"].to_numpy(float)
     tr = win["tr"].to_numpy(float)
     months = dates.year * 12 + dates.month
@@ -144,7 +197,12 @@ def run_putwrite(data: pd.DataFrame, cfg: PWConfig) -> PWResult:
                 if cfg.structure == "hold":
                     cost = max(K - S[i], 0.0) * units          # settle intrinsic
                 else:
-                    cost = bs_put(S[i], K, T_close, rf_a[i], sig[i], q) * units
+                    iv_c = sig[i]
+                    if cfg.vol_model == "skew":
+                        atm = max(sig[i] - cfg.atm_offset, 0.02)
+                        iv_c = iv_at_strike(S[i], K, atm,
+                                            smile_slope(skew[i], T_close, cfg.skew_damp))
+                    cost = bs_put(S[i], K, T_close, rf_a[i], iv_c, q) * units
                 equity -= cost
                 payout_total += cost
                 n_exp += 1
@@ -159,9 +217,16 @@ def run_putwrite(data: pd.DataFrame, cfg: PWConfig) -> PWResult:
 
             # 2) write a new one
             if not ruined and cfg.weight > 0:
-                K = strike_from_delta(S[i], cfg.delta, T_write, rf_a[i], sig[i], q)
+                if cfg.vol_model == "skew":
+                    atm = max(sig[i] - cfg.atm_offset, 0.02)
+                    sl = smile_slope(skew[i], T_write, cfg.skew_damp)
+                    K, iv_w = strike_from_delta_smile(S[i], cfg.delta, T_write,
+                                                      rf_a[i], atm, sl, q)
+                else:
+                    K = strike_from_delta(S[i], cfg.delta, T_write, rf_a[i], sig[i], q)
+                    iv_w = sig[i]
                 units = cfg.weight * equity / S[i]
-                prem = bs_put(S[i], K, T_write, rf_a[i], sig[i], q) * units
+                prem = bs_put(S[i], K, T_write, rf_a[i], iv_w, q) * units
                 equity += prem
                 prem_total += prem
                 open_pos = dict(K=K, units=units, prem=prem, written=dates[i])
@@ -178,7 +243,12 @@ def run_putwrite(data: pd.DataFrame, cfg: PWConfig) -> PWResult:
         if open_pos is not None and not ruined:
             held = (dates[i] - open_pos["written"]).days / 365.25
             t_left = max(T_write - held, T_close if cfg.structure == "roll" else 1e-4)
-            mv = bs_put(S[i], open_pos["K"], t_left, rf_a[i], sig[i], q) * open_pos["units"]
+            iv_m = sig[i]
+            if cfg.vol_model == "skew":
+                atm = max(sig[i] - cfg.atm_offset, 0.02)
+                iv_m = iv_at_strike(S[i], open_pos["K"], atm,
+                                    smile_slope(skew[i], max(t_left, 1e-3), cfg.skew_damp))
+            mv = bs_put(S[i], open_pos["K"], t_left, rf_a[i], iv_m, q) * open_pos["units"]
             mtm = equity - mv
             req = cfg.margin_mult * put_margin(S[i], open_pos["K"],
                                                open_pos["units"], mv)
@@ -207,7 +277,15 @@ def run_putwrite(data: pd.DataFrame, cfg: PWConfig) -> PWResult:
                     premium_collected=prem_total, payouts=payout_total, curve=mser)
 
 
-def load(cfg: Config | None = None) -> pd.DataFrame:
+def load(cfg: Config | None = None, skew_path: str = "data/skew_daily.csv") -> pd.DataFrame:
+    """Analysis panel, with the CBOE SKEW index merged in where available."""
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        return prepare(cfg or Config())
+        d = prepare(cfg or Config())
+    try:
+        sk = pd.read_csv(skew_path, parse_dates=["date"]).set_index("date")
+        d = d.join(sk[["skew"]], how="left")
+        d["skew"] = d["skew"].ffill().fillna(119.8)
+    except FileNotFoundError:
+        d["skew"] = 119.8
+    return d
