@@ -129,7 +129,13 @@ def run_path(
             continue
         seg_lev = lev[a:b]
         seg_ms = month_start[a:b]
-        path = segment_equity_path(equity, seg_lev, seg_ms, cfg.rebalance)
+        path, base = segment_equity_path(equity, seg_lev, seg_ms, cfg.rebalance,
+                                         return_base=True)
+        # A broker liquidates at the maintenance level, not at zero equity.
+        # Exposure notional is L * base, so the floor is rate * L * base.
+        floor = np.full_like(path, maint)
+        if cfg.maintenance_rate > 0.0:
+            floor = np.maximum(floor, cfg.maintenance_rate * L * base)
 
         # 4) Liquidation scan (absorbing zero) + drawdown tracking.
         check_path = path
@@ -138,7 +144,7 @@ def run_path(
             intrinsic = np.maximum(put_K - S[a:b], 0.0) * put_units
             check_path = path + intrinsic
 
-        breach = np.flatnonzero(check_path <= maint)
+        breach = np.flatnonzero(check_path <= floor)
         if breach.size > 0 and daily_check:
             first = breach[0]
             path = path.copy()
@@ -148,7 +154,7 @@ def run_path(
             # month_end model: only liquidate if a *month-end* mark breaches.
             ms_idx = np.flatnonzero(seg_ms)
             month_ends = np.append(ms_idx[1:] - 1, len(path) - 1) if ms_idx.size else np.array([len(path) - 1])
-            bad = month_ends[check_path[month_ends] <= maint]
+            bad = month_ends[check_path[month_ends] <= floor[month_ends]]
             if bad.size > 0:
                 first = int(bad[0])
                 path = path.copy()

@@ -83,5 +83,28 @@ def main():
         print(f"  {L:>5.2f}x -> equity {eq:>7.1%} of month-start   {state}")
 
 
+
+
+def reset_scheme_ceilings(maintenance: float = MES_MAINTENANCE) -> pd.DataFrame:
+    """Survivable leverage under each reset scheme.
+
+    Monthly reset carries a stale notional all month, so the whole month's
+    drawdown lands on one fixed exposure. Daily reset re-strikes the notional
+    every day, so only a single day's move can breach margin. That makes daily
+    reset survive MORE leverage than monthly, despite its volatility decay —
+    the opposite of the usual "monthly is gentler" intuition.
+    """
+    w = intramonth_drops()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        tr = prepare(Config())["tr"]
+    return pd.DataFrame([
+        dict(reset="monthly", worst_move=w.min(), what="worst month",
+             margin_call_at=margin_call_leverage(w.min(), maintenance)),
+        dict(reset="daily", worst_move=tr.min(), what="worst day",
+             margin_call_at=margin_call_leverage(tr.min(), maintenance)),
+    ])
+
+
 if __name__ == "__main__":
     main()

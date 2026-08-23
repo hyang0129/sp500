@@ -53,7 +53,8 @@ def segment_equity_path(
     lev: np.ndarray,
     month_start: np.ndarray,
     rebalance: str,
-) -> np.ndarray:
+    return_base: bool = False,
+):
     """Equity path over one annual segment, starting from equity E0.
 
     `lev` is the array of daily levered simple returns for the days *after* the
@@ -68,15 +69,27 @@ def segment_equity_path(
 
     Returns the equity level after each day (len == len(lev)). No liquidation
     is applied here; the caller scans the path for breaches.
+
+    With return_base=True also returns `base`, the equity the day's notional
+    was struck off — block-start equity under monthly reset, the previous day's
+    equity under daily reset. Exposure notional is L * base, which is what a
+    maintenance-margin test must be measured against.
     """
     n = len(lev)
     if n == 0:
-        return np.empty(0)
+        return (np.empty(0), np.empty(0)) if return_base else np.empty(0)
     if rebalance == "daily":
-        return E0 * np.cumprod(1.0 + lev)
+        path = E0 * np.cumprod(1.0 + lev)
+        if not return_base:
+            return path
+        base = np.empty(n)
+        base[0] = E0
+        base[1:] = path[:-1]
+        return path, base
 
     # monthly: walk month blocks, resetting the notional base each block.
     path = np.empty(n)
+    base = np.empty(n)
     E = E0
     starts = np.flatnonzero(month_start)
     # Ensure the segment's first day starts a block.
@@ -87,5 +100,6 @@ def segment_equity_path(
         cum = np.cumsum(lev[a:b])
         block = E * (1.0 + cum)
         path[a:b] = block
+        base[a:b] = E           # notional was struck at block start
         E = block[-1]
-    return path
+    return (path, base) if return_base else path

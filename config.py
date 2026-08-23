@@ -45,6 +45,11 @@ class Config:
     #   (understates ruin at 3x; comparison only).
     liquidation_model: str = "daily_path"
     maintenance_frac: float = 0.0  # liquidate when equity <= maintenance_frac
+    # Maintenance margin as a fraction of *exposure notional*. A broker
+    # liquidates here, not at zero equity. MES is ~$2,400 on ~$38k notional
+    # = 6.5%. Set 0.0 to disable and only liquidate at zero equity (the old,
+    # unrealistically generous behaviour).
+    maintenance_rate: float = 0.065
     # If True, credit the protective put's *intrinsic* value to equity when
     # testing for intra-period liquidation (a cheap mark-to-market proxy).
     # Default False matches the handoff's European "payoff only at roll" model.
