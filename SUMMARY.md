@@ -144,3 +144,70 @@ protection together at roughly 2x–3x over ~10 years.
 *Caveats: total-return data starts 1988 (no high-rate 1970s–80s); 20y
 conclusions hinge on the in-sample fact that every 20y window recovered;
 premiums are modeled at BS-impliedvol×1.2 and real index-put richness varies.*
+
+---
+
+# Update: protective puts in the 1.5-2x zone, and whether they buy leverage headroom
+
+Re-run with the maintenance-margin call modelled (6.5% of notional), dead
+windows kept at CAGR -100%, and the full 1976-2026 sample so October 1987 is in
+scope. 10-year windows, monthly reset, marked-up premiums.
+
+## In the 1.25-2.0x zone, protection is a pure cost
+
+| L | protection | med CAGR | 5th-pct TW | vs unprotected |
+|---|---|---|---|---|
+| 1.50 | none | 15.72% | 0.98 | — |
+| 1.50 | put20 | 14.00% | 0.98 | **-1.72pp med, +0.01 TW** |
+| 1.75 | none | 16.79% | 0.88 | — |
+| 1.75 | put20 | 14.85% | 0.91 | **-1.94pp med, +0.03 TW** |
+| 2.00 | none | 17.47% | 0.78 | — |
+| 2.00 | put20 | 16.08% | 0.84 | **-1.39pp med, +0.06 TW** |
+
+You pay 0.9-3.0pp of annual compound growth to buy 1-7 cents on the dollar of
+5th-percentile wealth. There is no ruin here to insure against (0% at every
+strike and leverage), and 10 years is enough for the market to recover, so the
+premium is close to dead weight. **Do not buy puts at 1.5-2x.**
+
+## Can protection buy back the headroom lost to the 2.75x cliff?
+
+Only if your broker gives the puts margin credit — and even then, not enough.
+
+| L | protection | margin credit | med CAGR | ruin |
+|---|---|---|---|---|
+| 2.75 | none | — | 14.37% | 25.0% |
+| 2.75 | put15 | no | 10.84% | **25.0%** |
+| 2.75 | put15 | yes | 15.35% | **8.3%** |
+| 3.00 | none | — | -1.17% | 48.5% |
+| 3.00 | put15 | no | -3.70% | **48.5%** |
+| 3.00 | put15 | yes | 13.98% | **14.6%** |
+
+**Without margin credit the put does literally nothing for ruin** — 25.0% and
+48.5%, identical to unprotected, because a European put settles only at the
+annual roll and cannot cushion an intra-year crash. It just costs premium.
+
+With margin credit (the realistic case for listed SPX puts in a portfolio-margin
+account, where the option's value sits in account equity) ruin falls sharply,
+48.5% -> 14.6% at 3x. Note this model credits *intrinsic* value only; real puts
+also carry time value that spikes with vol in a crash, so this understates the
+protection.
+
+## But leverage-plus-insurance is still dominated by less leverage
+
+| config | med CAGR | 5th-pct CAGR | 5th-pct TW | med DD | ruin |
+|---|---|---|---|---|---|
+| **1.75x, no puts** | **16.79%** | -1.27% | 0.88 | 61.2% | **0.0%** |
+| 2.00x, no puts | 17.47% | -2.46% | 0.78 | 69.3% | 0.0% |
+| 2.75x + put15 (credit) | 15.35% | **-100%** | 0.00 | 91.7% | 8.3% |
+| 3.00x + put15 (credit) | 13.98% | **-100%** | 0.00 | 94.3% | 14.6% |
+
+Protected 3x returns **less** than unprotected 1.75x (13.98% vs 16.79%) while
+still liquidating 14.6% of windows and running a 94% median drawdown. Buying
+insurance so you can carry more leverage is strictly worse than carrying less
+leverage. The put only earned its keep in the original study because that study
+compared protected-3x against unprotected-3x — never against simply
+de-levering.
+
+**Conclusion: 1.5-1.75x monthly, unprotected, is the sound configuration.**
+15.7-16.8% median CAGR, roughly break-even 5th percentile, zero ruin, and clear
+of the October 1987 margin wire with room.
