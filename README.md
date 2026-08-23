@@ -294,3 +294,17 @@ Engine confirmation on the full 1976-2026 sample (`require_real_tr=False`):
 P(ruin) over rolling 10y windows is 0% at 3.0x but **25% at 3.25x** and 50% at
 3.5x. Note that median CAGR at those leverages is computed over *surviving*
 windows only, so it is survivorship-inflated and should not be read as a return.
+
+### Put *selling* (`putwrite.py`)
+
+The mirror of the protection study: systematic short puts, strikes by target
+delta (5/10/20), sized 0-1x of equity, 1-month held to expiry vs 2-month closed
+at 1 month. Priced off VIX so the captured VRP is the real historical one
+(1990-2026). See [`PUTWRITE.md`](PUTWRITE.md).
+
+Headline: **1-month held to expiry beats 2-month-closed-early in every cell**
+(theta accelerates into expiry), **20-delta dominates 5-delta** on premium per
+unit of tail risk, and unlike the steepener the overlay is genuinely additive -
+1.5x + 1x 20d gives 22.32% CAGR at 74.1% maxDD versus 2.0x plain at 22.12% /
+80.8%. The catch is short gamma: worst intra-month goes -43.8% -> -63.4%, and a
+replayed October 1987 costs -17.7% at expiry / -27.2% peak per 1x of notional.
