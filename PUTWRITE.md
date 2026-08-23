@@ -285,3 +285,112 @@ the everyday risk profile suggests.
 - SKEW is a 30-day measure applied to the 2-month leg as well.
 - ^PUT itself sells ATM, so it validates the ATM level and the mechanics — it
   does **not** independently validate the OTM smile slope.
+
+---
+
+# Update: weekly vs monthly expiry
+
+Generalised the engine to write on any cycle. **There is no ^WPUT history on
+the source (one day only), so unlike the monthly case the weekly result has no
+external index to validate against** — it is model output, not a replication.
+
+## Why weekly should collect more
+
+Premium scales with sigma*sqrt(T), so annualised premium at the same delta is
+
+    52*sqrt(1/52) / (12*sqrt(1/12)) = sqrt(52/12) = 2.08x
+
+Measured in the engine: **2.27x** the gross premium (the extra is smile).
+Confirmed not to be a modelling artifact: the smile slope goes as 1/sqrt(T)
+while log-moneyness goes as sqrt(T), so the **vol-point uplift at a given delta
+is tenor-invariant** (10d: +10.1p monthly, +10.6p weekly). There is a regression
+test pinning this.
+
+But the same delta sits far closer to spot: at 18 vol a 10-delta put is
+**6.1% OTM monthly and 3.1% OTM weekly**, and the payout ratio reflects it —
+weekly pays out **70% of premium collected versus monthly's 41%**.
+
+## Results, 1x notional, cash-collateralised, calibrated skew, 1990-2026
+
+Transaction cost is charged on every option traded as a fraction of its value
+(half-spread plus commission).
+
+| cycle | delta | struct | 0% cost | 10% cost | 25% cost | maxDD | worst intra-month |
+|---|---|---|---|---|---|---|---|
+| month | 10d | hold | 8.28% | 7.68% | 6.79% | 10.8% | −10.4% |
+| month | 20d | hold | 10.60% | 9.51% | 7.90% | 18.7% | −16.1% |
+| month | 20d | roll | 6.92% | 4.37% | 0.66% | 17.1% | −13.7% |
+| **week** | 5d | hold | 8.61% | 7.95% | 6.97% | **4.9%** | −4.8% |
+| **week** | 10d | hold | **13.29%** | 11.97% | 10.03% | 7.1% | −7.1% |
+| **week** | 20d | hold | **17.20%** | 14.79% | **11.26%** | 12.4% | −10.5% |
+| week | 20d | roll | 10.43% | 4.85% | **−3.01%** | 12.5% | −8.6% |
+
+Cash baseline 2.75%.
+
+**In-sample weekly wins on both axes** — 20d hold returns 17.20% vs 10.60% with
+a *lower* max drawdown (12.4% vs 18.7%). Even at a punitive 25% cost it still
+leads, 11.26% vs 7.90%.
+
+The mechanism is re-striking speed. A monthly writer carries a stale strike
+through the whole month; a weekly writer re-strikes every Monday at the new spot
+and the new (higher) vol, so it adapts to a selloff four times faster.
+
+**Hold-to-expiry still beats close-early, and costs make it brutal.** The weekly
+"roll" structure trades twice as often and pays both ways: at 25% cost it goes
+**negative** (−3.01%). Closing early is the worst idea in the study.
+
+## But October 1987 reverses it
+
+Same 1x notional, run through Jun-Dec 1987 (no VIX, so trailing realised vol):
+
+| cycle | delta | final | maxDD |
+|---|---|---|---|
+| month | 5d | 0.956 | 18.0% |
+| month | 10d | 0.921 | 22.5% |
+| month | 20d | **0.913** | 26.2% |
+| week | 5d | 0.859 | 19.8% |
+| week | 10d | 0.834 | 23.8% |
+| week | 20d | **0.837** | **29.2%** |
+
+**Weekly loses roughly 8pp more than monthly through 1987.** The crash was a
+staircase, not a single gap:
+
+    Oct 02  328.07
+    Oct 09  311.07
+    Oct 16  282.70
+    Oct 23  248.22
+
+The weekly writer was hit **four consecutive times**, re-striking each Monday at
+a level that then fell again. The monthly writer took one hit. Faster
+re-striking is an advantage into a V-shaped shock and a liability in a sustained
+multi-week decline — it hands you a fresh short strike every week on the way
+down.
+
+That is exactly why the 1990-2026 sample flatters weekly: COVID, 2018 and 2011
+were sharp single-event shocks, which is weekly's best case.
+
+## Verdict
+
+- **Weekly, 20-delta, held to expiry** is the highest-returning configuration
+  tested and, in-sample, also the lowest-drawdown one at its return level.
+- **Never close early**, on any cycle. At realistic costs the weekly roll is
+  the only configuration in the entire study that loses money.
+- **The weekly edge is conditional on crash shape.** It beats monthly in
+  V-shaped shocks and loses to it in staircase declines. 1987 is the only
+  staircase in the record and weekly lost ~8pp there.
+- Weekly's advantage also rests on 52 fills a year at reasonable spreads. The
+  cost columns show it survives 25%, but that assumes you can actually transact
+  a 20-delta SPXW weekly at something near mid, every week, at size.
+
+## Extra caveats specific to the weekly work
+
+- **No ^WPUT index history to validate against** — the monthly case was
+  anchored to the real ^PUT index, the weekly case is not anchored to anything.
+- The CBOE SKEW index is a **30-day** measure; applying it to a 7-day option
+  extrapolates. Real 1-week skew is steeper still than the sqrt(T) scaling
+  implies, which if anything understates weekly premium.
+- Weekly gamma near expiry is far larger than a daily-marked model captures;
+  a Friday-to-Monday gap through a near strike is the dominant real-world risk
+  and is only crudely represented here.
+- SPX weeklys did not exist before ~2005, so the 1990-2005 portion of the weekly
+  backtest is counterfactual — the instrument was not tradable.

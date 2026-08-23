@@ -114,7 +114,8 @@ def strike_from_delta_smile(S: float, target_delta: float, T: float, r: float,
 class PWConfig:
     weight: float = 0.5            # short-put notional as a multiple of equity
     delta: float = 0.10            # target |delta| (0.05 / 0.10 / 0.20)
-    structure: str = "hold"        # "hold" (1M to expiry) | "roll" (2M, close at 1M)
+    structure: str = "hold"        # "hold" (1 cycle, to expiry) | "roll" (2 cycles, close after 1)
+    cycle: str = "month"           # how often a new put is written: "month" | "week"
     core_leverage: float = 0.0     # long S&P core, monthly reset (0 = cash + puts)
     div_yield: float = 0.018
     margin_mult: float = 1.0
@@ -125,6 +126,10 @@ class PWConfig:
     vol_model: str = "flat_vix"
     atm_offset: float = 0.0      # vol points (decimal) VIX sits above ATM IV
     skew_damp: float = 1.0       # damping on the Backus-Foresi-Wu slope
+    # Transaction cost charged on every option traded, as a fraction of the
+    # option's value (half-spread + commission). Far-OTM and weekly options
+    # have much wider RELATIVE spreads, so this is where 52 rolls/yr bites.
+    cost_frac: float = 0.0
     start: str = "1990-01-02"
     end: str = "2026-08-14"
 
@@ -162,8 +167,24 @@ def run_putwrite(data: pd.DataFrame, cfg: PWConfig) -> PWResult:
     is_month_start[0] = True
     is_month_start[1:] = months[1:] != months[:-1]
 
-    T_write = (2.0 if cfg.structure == "roll" else 1.0) / 12.0
-    T_close = 1.0 / 12.0            # time remaining when we close a "roll" trade
+    # A new put is written at the start of each cycle. "roll" writes a
+    # two-cycle option and buys it back one cycle later, so the option always
+    # still has one cycle of life left when it is closed.
+    if cfg.cycle == "week":
+        iso = dates.isocalendar()
+        wk = np.asarray(iso["year"]) * 100 + np.asarray(iso["week"])
+        is_write = np.empty(n, dtype=bool)
+        is_write[0] = True
+        is_write[1:] = wk[1:] != wk[:-1]
+        cycle_years = 7.0 / 365.25
+    elif cfg.cycle == "month":
+        is_write = is_month_start
+        cycle_years = 1.0 / 12.0
+    else:
+        raise ValueError(f"unknown cycle {cfg.cycle}")
+
+    T_write = (2.0 if cfg.structure == "roll" else 1.0) * cycle_years
+    T_close = cycle_years           # time remaining when a "roll" trade is closed
 
     equity = 1.0
     peak = 1.0
@@ -191,6 +212,9 @@ def run_putwrite(data: pd.DataFrame, cfg: PWConfig) -> PWResult:
         equity += pnl
 
         if is_month_start[i] and not ruined:
+            core_base = equity      # the levered core still resets monthly
+
+        if is_write[i] and not ruined:
             # 1) settle / close the existing short put
             if open_pos is not None:
                 K, units, prem = open_pos["K"], open_pos["units"], open_pos["prem"]
@@ -203,6 +227,7 @@ def run_putwrite(data: pd.DataFrame, cfg: PWConfig) -> PWResult:
                         iv_c = iv_at_strike(S[i], K, atm,
                                             smile_slope(skew[i], T_close, cfg.skew_damp))
                     cost = bs_put(S[i], K, T_close, rf_a[i], iv_c, q) * units
+                    cost *= (1.0 + cfg.cost_frac)      # buy back at the offer
                 equity -= cost
                 payout_total += cost
                 n_exp += 1
@@ -226,12 +251,12 @@ def run_putwrite(data: pd.DataFrame, cfg: PWConfig) -> PWResult:
                     K = strike_from_delta(S[i], cfg.delta, T_write, rf_a[i], sig[i], q)
                     iv_w = sig[i]
                 units = cfg.weight * equity / S[i]
-                prem = bs_put(S[i], K, T_write, rf_a[i], iv_w, q) * units
+                gross = bs_put(S[i], K, T_write, rf_a[i], iv_w, q) * units
+                prem = gross * (1.0 - cfg.cost_frac)   # sell at the bid
                 equity += prem
                 prem_total += prem
                 open_pos = dict(K=K, units=units, prem=prem, written=dates[i])
 
-            core_base = equity
             month_start_equity = equity
 
         # --- mark to market: equity net of the open short put's value --------

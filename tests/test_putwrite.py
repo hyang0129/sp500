@@ -110,3 +110,46 @@ def test_skew_model_pays_more_for_far_otm_than_flat_vix():
     skew = run_putwrite(d, PWConfig(weight=1.0, delta=0.05, structure="hold",
                                     vol_model="skew", atm_offset=0.03))
     assert skew.premium_collected > flat.premium_collected
+
+
+# --- weekly vs monthly cycles ----------------------------------------------
+def test_weekly_cycle_writes_about_52_a_year():
+    d = load()
+    m = run_putwrite(d, PWConfig(weight=1.0, delta=0.10, cycle="month"))
+    w = run_putwrite(d, PWConfig(weight=1.0, delta=0.10, cycle="week"))
+    yrs = 36.6
+    assert 11 < m.n_expiries / yrs < 13
+    assert 50 < w.n_expiries / yrs < 54
+
+
+def test_same_delta_weekly_strike_is_closer_to_spot():
+    from putwrite import strike_from_delta
+    kw = strike_from_delta(100, 0.10, 7 / 365.25, 0.04, 0.18, 0.018)
+    km = strike_from_delta(100, 0.10, 1 / 12, 0.04, 0.18, 0.018)
+    assert kw > km  # weekly sits nearer the money
+
+
+def test_smile_uplift_is_tenor_invariant_at_equal_delta():
+    """slope ~ 1/sqrt(T) and |log-moneyness| ~ sqrt(T), so the two cancel.
+
+    Guards against the weekly result being an artifact of the smile model.
+    """
+    from putwrite import smile_slope, strike_from_delta_smile
+    ups = []
+    for T in (1 / 12, 7 / 365.25):
+        _, iv = strike_from_delta_smile(100, 0.10, T, 0.04, 0.15,
+                                        smile_slope(119.8, T), 0.018)
+        ups.append(iv - 0.15)
+    assert abs(ups[0] - ups[1]) < 0.01  # within 1 vol point
+
+
+def test_transaction_costs_reduce_returns_and_bite_harder_weekly():
+    d = load()
+    def cagr(cyc, cf):
+        return run_putwrite(d, PWConfig(weight=1.0, delta=0.20, cycle=cyc,
+                                        vol_model="skew", atm_offset=0.03,
+                                        cost_frac=cf)).cagr
+    m0, m2 = cagr("month", 0.0), cagr("month", 0.25)
+    w0, w2 = cagr("week", 0.0), cagr("week", 0.25)
+    assert m2 < m0 and w2 < w0
+    assert (w0 - w2) > (m0 - m2)  # 52 rolls/yr pays more toll than 12
