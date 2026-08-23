@@ -116,3 +116,82 @@ risk, drop the rates legs and size the MES up instead.**
   a different lookback would pick somewhat different windows.
 - No commissions, slippage, CTD switches, or margin hikes.
 - Rolling windows overlap, so the distribution is not 180 independent draws.
+
+---
+
+# Update: non-fixed sizing (constant leverage, fractional contracts)
+
+All results above hold **fixed contract counts**, which flatters the book: as
+equity grows the position shrinks relative to the account, so realised risk
+decays through each window. Re-running everything under `constant_leverage`
+(resize monthly to hold each leg's notional/equity ratio, fractional contracts
+allowed) **strengthens the verdict**.
+
+## Rolling 5-year windows, 1976-2026 (n=180)
+
+| book | median | 5th pct | worst | median DD | worst DD | ret/DD |
+|---|---|---|---|---|---|---|
+| **full** (2 MES + overlay) | +88.5% | +9.9% | −30.1% | 23.3% | 48.1% | **3.80** |
+| MES only 2x | +83.2% | +8.9% | −7.6% | 16.9% | 44.2% | **4.92** |
+| MES only 3x | +117.2% | +4.2% | −24.9% | 26.4% | 59.7% | 4.44 |
+| MES only 4x | +152.1% | −2.1% | −40.1% | 37.7% | 71.7% | 4.03 |
+
+Interpolating plain MES to the full book's own median drawdown:
+
+| sizing | full book | plain MES at same DD | **overlay** |
+|---|---|---|---|
+| fixed | +83.7% @ 21.4% DD | +97.2% | **−13.5pp** |
+| **constant_leverage** | +88.5% @ 23.3% DD | **+106.1%** | **−17.6pp** |
+
+The overlay's risk-adjusted deficit **widens** from −13.5pp to −17.6pp, and the
+full book still has the worst return-per-drawdown of all four books (3.80 vs
+4.92 for plain 2 MES).
+
+The tail gets materially worse: the overlay's **5th-percentile edge falls from
+−28.6pp to −50.3pp**, and its worst window from −25.5% to −30.1%. Under fixed
+sizing a late-window flattening was diluted by the grown account; under constant
+leverage it lands at full weight.
+
+## Continuous Volcker path 1979 → 1984
+
+| sizing | full book | 2 MES only | overlay edge |
+|---|---|---|---|
+| fixed | $205,911 (37.7% DD) | $185,638 (12.5% DD) | **+$20.3k** |
+| **constant_leverage** | $190,622 (39.2% DD) | $191,328 (14.1% DD) | **−$0.7k** |
+| constant_dv01 | $191,790 (38.9% DD) | $191,328 (14.1% DD) | +$0.5k |
+
+**The overlay's entire apparent advantage on the Volcker path was a sizing
+artifact.** With fixed contracts the rates legs shrank relative to a growing
+account just as the 1982-83 rally arrived; hold the risk constant and the edge
+goes to roughly zero — while still carrying ~3x the drawdown of plain 2 MES.
+
+## What did NOT change
+
+- **Flattening episodes: the overlay still loses 8 of 8**, mean −23.9% (vs
+  −24.0% fixed). 2022 is still the worst single episode (−28.0% vs −32.5%).
+- **Recessions: still a real hedge**, +20.7pp average during (vs +21.5pp), and
+  the GFC is still rescued (−25.2% → −1.1%).
+
+## New finding: constant leverage removes the margin call
+
+Because the book deleverages as equity falls, margin utilisation stays flat
+instead of spiking. On the Volcker path at **2.5x** size, fixed sizing gets
+margin-called on 1980-03-17; constant leverage **survives an 83.9% drawdown
+without ever being stopped out**.
+
+That is the classic trade: you swap "liquidated at the bottom" for "asymptotic
+bleed plus volatility decay". It is why the median returns rise slightly under
+constant leverage while the worst-case *returns* get worse.
+
+## Fractional contracts matter
+
+At this account size, rounding to whole contracts costs **6.8%** on the Volcker
+path ($190,622 → $177,690). Fractional sizing is not a cosmetic detail here.
+
+## Revised bottom line
+
+Unchanged in direction, stronger in magnitude: the steepener overlay is a
+genuine recession/equity-crisis hedge, and a **worse** growth engine than simply
+sizing the equity leg up — costing ~18pp of risk-matched return and a −50pp
+5th-percentile tail. If you want the hedge, buy it deliberately and know you are
+paying roughly that much for it.
