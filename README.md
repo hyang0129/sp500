@@ -239,3 +239,27 @@ python recessions.py --chart          # add sizing via StressConfig(sizing=...)
 Under `constant_leverage` the overlay's edge on the continuous Volcker path
 collapses from **+$20.3k to -$0.7k** while still carrying ~3x the drawdown of
 plain 2 MES.
+
+### Where is the optimal leverage? (`leverage_sweep.py`)
+
+Sweeps unprotected leverage 0.5x-3.0x on the S&P itself and reports the optimum
+under three criteria, which disagree sharply:
+
+```bash
+python leverage_sweep.py
+```
+
+| horizon | reset | growth-optimal (median log-wealth) | tail-optimal (5th-pct wealth) |
+|---|---|---|---|
+| 10y | monthly | 3.0x (still rising at 3x) | 0.5x |
+| 20y | monthly | 3.0x (still rising at 3x) | **2.25x** |
+| 10y | daily | 2.5x | 0.5x |
+| 20y | daily | 2.0x | **1.5x** |
+
+Return-per-drawdown falls monotonically with leverage in every case, so it always
+picks the lowest leverage tested - it is not a growth criterion.
+
+**Rebalance frequency dominates.** A monthly-reset futures book suffers far less
+volatility decay than a daily-reset LETF, so its optimum sits much higher and no
+interior peak appears below 3x. Under daily reset there IS an interior peak, and
+at a 20-year horizon the 5th-percentile outcome peaks at **1.5x**.
