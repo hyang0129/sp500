@@ -263,3 +263,34 @@ picks the lowest leverage tested - it is not a growth criterion.
 volatility decay than a daily-reset LETF, so its optimum sits much higher and no
 interior peak appears below 3x. Under daily reset there IS an interior peak, and
 at a 20-year horizon the 5th-percentile outcome peaks at **1.5x**.
+
+### Correction: the monthly-reset optimum is not survivable (`wipeout.py`)
+
+The leverage sweep above runs on the **1988-2026** total-return series and
+liquidates only at exactly zero equity. Both assumptions are too generous:
+1988 excludes **October 1987**, the worst month ever for a leveraged book, and a
+broker liquidates at the maintenance level, not at zero.
+
+A monthly-reset book holds fixed notional within the month, so
+`equity_t/equity_0 = 1 + L * cum_return_since_month_start`. That gives:
+
+| month | intra-month drop | margin-called at | wiped at |
+|---|---|---|---|
+| **1987-10** | **-30.07%** | **2.73x** | 3.33x |
+| 2008-10 | -27.11% | 2.98x | 3.69x |
+| 2020-03 | -24.16% | 3.26x | 4.14x |
+
+```bash
+python wipeout.py
+```
+
+So the "growth-optimal >=3x under monthly reset" reading is **not survivable**:
+at 3x, October 1987 leaves 9.8% of month-start equity - a margin call, and the
+account never sees the recovery. The practical monthly-reset ceiling is roughly
+**2.7x**, and lower once a crisis margin hike is assumed (CME raised margins
+sharply in October 1987).
+
+Engine confirmation on the full 1976-2026 sample (`require_real_tr=False`):
+P(ruin) over rolling 10y windows is 0% at 3.0x but **25% at 3.25x** and 50% at
+3.5x. Note that median CAGR at those leverages is computed over *surviving*
+windows only, so it is survivorship-inflated and should not be read as a return.

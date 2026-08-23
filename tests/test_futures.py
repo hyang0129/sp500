@@ -124,3 +124,24 @@ def test_fractional_vs_whole_contracts_differ_but_track():
     whole = run_stress(_cfg(sizing="constant_leverage", fractional=False)).final_equity
     assert frac != whole
     assert abs(whole / frac - 1.0) < 0.25  # rounding shifts it, does not break it
+
+
+# --- intra-month wipeout / margin-call thresholds --------------------------
+def test_wipeout_and_margin_call_thresholds():
+    from wipeout import margin_call_leverage, wipeout_leverage
+    drop = -0.3007  # October 1987
+    assert abs(wipeout_leverage(drop) - 3.326) < 0.01
+    assert abs(margin_call_leverage(drop, 0.065) - 2.734) < 0.01
+    # the margin call must always bind before outright wipeout
+    for d in (-0.10, -0.20, -0.3007, -0.40):
+        assert margin_call_leverage(d, 0.065) < wipeout_leverage(d)
+
+
+def test_monthly_reset_equity_is_linear_in_index_move():
+    """The identity the thresholds rest on: equity/equity0 = 1 + L*cum_return."""
+    import numpy as np
+    from model import segment_equity_path
+    lev = np.array([-0.05, -0.05, -0.05, -0.05])  # already levered daily returns
+    ms = np.array([True, False, False, False])
+    path = segment_equity_path(1.0, lev, ms, "monthly")
+    assert abs(path[-1] - (1.0 + lev.sum())) < 1e-12
