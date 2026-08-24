@@ -394,3 +394,103 @@ were sharp single-event shocks, which is weekly's best case.
   and is only crudely represented here.
 - SPX weeklys did not exist before ~2005, so the 1990-2005 portion of the weekly
   backtest is counterfactual — the instrument was not tradable.
+
+---
+
+# Update: roll mechanics — and my weekly model had the worst possible schedule
+
+The weekly results above wrote **Monday, expiring the following Monday**. Real
+SPXW weeklies expire **Friday**, so that schedule was not tradable for most of
+the sample, and — it turns out — it is the single worst way to arrange the
+exposure.
+
+## The weekend is where the tail lives
+
+| weekday | n | sd | worst day |
+|---|---|---|---|
+| **Mon** | 2382 | **1.25%** | **−20.46%** |
+| Tue | 2583 | 1.09% | −5.74% |
+| Wed | 2584 | 1.05% | −9.03% |
+| Thu | 2534 | 1.08% | −9.49% |
+| Fri | 2519 | 1.03% | −6.76% |
+
+**9 of the 20 worst days since 1976 are Mondays — 45%, against a 19% base
+rate.** Monday carries 24.5% of all realised variance. The four worst days in
+the record are all Mondays: 1987-10-19 (−20.46%), 2020-03-16 (−11.98%),
+2008-09-29 (−8.79%), 2011-08-08 (−6.65%).
+
+For a short-put book the weekend gap is not a detail. It is the risk.
+
+## Three tradable schedules
+
+| schedule | tenor | weekend | where the weekend falls |
+|---|---|---|---|
+| `mon_mon` | 7 cal days | carried | **at expiry** — maximum gamma, no time value left |
+| `fri_fri` | 7 cal days | carried | **at inception** — far OTM, full time value |
+| `mon_fri` | 4 cal days | **none** | flat Fri close → Mon |
+
+## In-sample (1x notional, calibrated skew, 1990-2026)
+
+| schedule | delta | 0% cost | 10% | 25% | maxDD | worst IM |
+|---|---|---|---|---|---|---|
+| monthly | 20d | 10.60% | 9.51% | 7.90% | 18.7% | −16.1% |
+| mon_mon | 20d | 17.20% | 14.79% | 11.26% | **12.4%** | −10.5% |
+| **fri_fri** | 20d | **17.99%** | **15.60%** | **12.11%** | 17.6% | −15.4% |
+| mon_fri | 20d | 11.07% | 9.34% | 6.79% | 19.2% | −14.6% |
+
+`fri_fri` returns most; `mon_fri` gives up roughly a third of the return
+because it only covers ~57% of the calendar.
+
+## October 1987 inverts the ranking completely
+
+| schedule | 20d final | maxDD |
+|---|---|---|
+| monthly | 0.913 | 26.2% |
+| **mon_mon** | **0.837** | **29.2%** |
+| fri_fri | 0.967 | 24.6% |
+| **mon_fri** | **1.009** | **11.7%** |
+
+`mon_mon` — the schedule the earlier weekly results used — is the **worst** of
+the four, because Black Monday landed on its expiry, where gamma is maximal and
+there is no time value to absorb the move. `fri_fri` carries the identical
+weekend but at inception, when the option is far OTM with full time value, and
+loses less than half as much. `mon_fri` sidesteps it entirely.
+
+**So the earlier "weekly beats monthly" headline was measured on the worst
+schedule, and it still won in-sample — but its 1987 loss was an artifact of
+that schedule, not of weekly writing as such.** On `fri_fri`, weekly beats
+monthly in-sample *and* survives 1987 better (0.967 vs 0.913).
+
+## An important honest caveat on the 1987 mon_fri number
+
+The engine trades at the **close**. So the `mon_fri` writer on Monday 1987-10-19
+writes at 224.84, having sat out the entire day — not merely the overnight gap.
+Black Monday was largely an *intraday* decline, so a real Monday-morning writer
+would have caught most of it. **The 1.009 figure is therefore too flattering**;
+the genuine benefit is avoiding the Friday-close-to-Monday-open gap, which is a
+part of that day's move, not all of it.
+
+## On the practical roll, which is what prompted this
+
+- `fri_fri` as modelled settles the expiring option and writes the new one at
+  the same Friday close. SPXW is PM-settled at that close, so in practice you
+  write minutes before it — a few minutes of overlap or of gap, second-order.
+- Rolling at Friday **open or midday** means buying back the expiring option
+  with hours of life left. That is the `roll` structure, and it is the most
+  expensive thing in this study: you surrender the fastest-decaying hours *and*
+  pay the spread twice. At 25% cost the weekly roll returns **−3.01%**.
+- Deliberate **double exposure** (writing next week's before this week's
+  expires) doubles notional for the overlap. Over a weekend that is the exact
+  window where the tail lives, so it is the worst possible time to be doubled.
+
+## Revised verdict on tenor
+
+- **`fri_fri` weekly, 20-delta, held to expiry** is the best of the schedules
+  tested — highest return in-sample and better 1987 survival than monthly.
+- **Never `mon_mon`.** Putting the weekend at expiry is strictly worse than
+  putting it at inception, for the same tenor and the same delta.
+- **`mon_fri` is the defensive choice**: roughly monthly-level returns (11.07%
+  vs 10.60%) with materially the best crash behaviour, at the cost of 52 trades
+  a year instead of 12 and no exposure 43% of the time.
+- All of this remains unvalidated against any published weekly index, and the
+  pre-2005 portion is counterfactual because SPX weeklys did not exist.

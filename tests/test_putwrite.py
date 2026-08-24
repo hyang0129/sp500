@@ -153,3 +153,34 @@ def test_transaction_costs_reduce_returns_and_bite_harder_weekly():
     w0, w2 = cagr("week", 0.0), cagr("week", 0.25)
     assert m2 < m0 and w2 < w0
     assert (w0 - w2) > (m0 - m2)  # 52 rolls/yr pays more toll than 12
+
+
+# --- weekly roll schedule / weekend exposure -------------------------------
+def test_weekly_spans_all_write_about_52_a_year():
+    d = load()
+    for span in ("mon_mon", "fri_fri", "mon_fri"):
+        r = run_putwrite(d, PWConfig(weight=1.0, delta=0.10, cycle="week",
+                                     weekly_span=span))
+        assert 50 < r.n_expiries / 36.6 < 54
+
+
+def test_mon_fri_collects_less_premium_by_sqrt_time():
+    """4 calendar days vs 7: premium must scale as sqrt(4/7) per option."""
+    from model import bs_put
+    from putwrite import strike_from_delta
+    prem = []
+    for T in (7 / 365.25, 4 / 365.25):
+        K = strike_from_delta(100, 0.10, T, 0.04, 0.18, 0.018)
+        prem.append(bs_put(100, K, T, 0.04, 0.18, 0.018))
+    assert abs(prem[1] / prem[0] - np.sqrt(4 / 7)) < 0.02
+
+
+def test_weekend_flat_schedule_survives_1987_better():
+    """Black Monday was a weekend gap; not holding over it must help."""
+    d = load()
+    def final(span):
+        return run_putwrite(d, PWConfig(weight=1.0, delta=0.20, cycle="week",
+                                        weekly_span=span, vol_model="skew",
+                                        atm_offset=0.0, start="1987-06-01",
+                                        end="1987-12-31")).final
+    assert final("mon_fri") > final("fri_fri") > final("mon_mon")

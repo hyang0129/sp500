@@ -116,6 +116,13 @@ class PWConfig:
     delta: float = 0.10            # target |delta| (0.05 / 0.10 / 0.20)
     structure: str = "hold"        # "hold" (1 cycle, to expiry) | "roll" (2 cycles, close after 1)
     cycle: str = "month"           # how often a new put is written: "month" | "week"
+    # Weekly roll schedule. Real SPXW weeklies expire FRIDAY, so the choice of
+    # schedule decides whether you carry the weekend -- and the weekend is where
+    # the tail lives (9 of the 20 worst days since 1976 are Mondays).
+    #   "mon_mon"  write Mon, expire next Mon  (7 cal days, carries the weekend)
+    #   "fri_fri"  write Fri, expire next Fri  (7 cal days, carries the weekend)
+    #   "mon_fri"  write Mon, expire Fri       (4 cal days, FLAT over the weekend)
+    weekly_span: str = "mon_mon"
     core_leverage: float = 0.0     # long S&P core, monthly reset (0 = cash + puts)
     div_yield: float = 0.018
     margin_mult: float = 1.0
@@ -173,12 +180,23 @@ def run_putwrite(data: pd.DataFrame, cfg: PWConfig) -> PWResult:
     if cfg.cycle == "week":
         iso = dates.isocalendar()
         wk = np.asarray(iso["year"]) * 100 + np.asarray(iso["week"])
-        is_write = np.empty(n, dtype=bool)
-        is_write[0] = True
-        is_write[1:] = wk[1:] != wk[:-1]
-        cycle_years = 7.0 / 365.25
+        first_of_week = np.empty(n, dtype=bool)
+        first_of_week[0] = True
+        first_of_week[1:] = wk[1:] != wk[:-1]
+        last_of_week = np.empty(n, dtype=bool)
+        last_of_week[-1] = True
+        last_of_week[:-1] = wk[:-1] != wk[1:]
+        if cfg.weekly_span == "mon_mon":
+            is_write, is_settle, cycle_years = first_of_week, first_of_week, 7.0 / 365.25
+        elif cfg.weekly_span == "fri_fri":
+            is_write, is_settle, cycle_years = last_of_week, last_of_week, 7.0 / 365.25
+        elif cfg.weekly_span == "mon_fri":
+            # written Monday, expires Friday: no position over the weekend
+            is_write, is_settle, cycle_years = first_of_week, last_of_week, 4.0 / 365.25
+        else:
+            raise ValueError(f"unknown weekly_span {cfg.weekly_span}")
     elif cfg.cycle == "month":
-        is_write = is_month_start
+        is_write = is_settle = is_month_start
         cycle_years = 1.0 / 12.0
     else:
         raise ValueError(f"unknown cycle {cfg.cycle}")
@@ -214,7 +232,7 @@ def run_putwrite(data: pd.DataFrame, cfg: PWConfig) -> PWResult:
         if is_month_start[i] and not ruined:
             core_base = equity      # the levered core still resets monthly
 
-        if is_write[i] and not ruined:
+        if is_settle[i] and not ruined:
             # 1) settle / close the existing short put
             if open_pos is not None:
                 K, units, prem = open_pos["K"], open_pos["units"], open_pos["prem"]
@@ -240,8 +258,9 @@ def run_putwrite(data: pd.DataFrame, cfg: PWConfig) -> PWResult:
             if equity <= 0:
                 ruined, equity = True, 0.0
 
+        if is_write[i] and not ruined and open_pos is None:
             # 2) write a new one
-            if not ruined and cfg.weight > 0:
+            if cfg.weight > 0:
                 if cfg.vol_model == "skew":
                     atm = max(sig[i] - cfg.atm_offset, 0.02)
                     sl = smile_slope(skew[i], T_write, cfg.skew_damp)
@@ -256,7 +275,6 @@ def run_putwrite(data: pd.DataFrame, cfg: PWConfig) -> PWResult:
                 equity += prem
                 prem_total += prem
                 open_pos = dict(K=K, units=units, prem=prem, written=dates[i])
-
             month_start_equity = equity
 
         # --- mark to market: equity net of the open short put's value --------
