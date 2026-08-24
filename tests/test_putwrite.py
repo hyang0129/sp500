@@ -208,3 +208,13 @@ def test_roll_day_choice_is_second_order():
                                               weekly_span=span, vol_model="skew",
                                               atm_offset=0.03)).cagr)
     assert max(cagrs) - min(cagrs) < 0.02
+
+
+def test_listing_dates_are_recorded_for_tradability():
+    """Guards against silently backtesting a contract that did not exist."""
+    from putwrite import SPXW_LISTED, listed_from
+    assert SPXW_LISTED["fri"] < SPXW_LISTED["wed"] < SPXW_LISTED["mon"]
+    assert SPXW_LISTED["mon"] < SPXW_LISTED["tue"] <= SPXW_LISTED["thu"]
+    assert listed_from("fri_fri") == "2005-10-28"
+    assert listed_from("mon_fri") == "2005-10-28"   # Friday expiry
+    assert listed_from("tue_tue") == "2022-04-18"

@@ -569,3 +569,85 @@ expiries). It now falls back to the last session of that week, which is what the
 exchange does. All six schedules now write 52.2 times a year. Two regression
 tests added: no week may be skipped, and the roll-day spread must stay inside
 2pp.
+
+---
+
+# Update: most of that roll-day scan was not tradable
+
+Verified against Cboe's own announcements. SPXW expiry weekdays were listed at
+very different times:
+
+| expiry weekday | first listed | years available to 2026 | share of the 36.6y backtest that is counterfactual |
+|---|---|---|---|
+| **Friday** | 2005-10-28 | 20.8 | 43% |
+| Wednesday | 2016-02-23 | 10.5 | 71% |
+| Monday | 2016-08-15 | 10.0 | 73% |
+| **Tuesday** | **2022-04-18** | **4.3** | **88%** |
+| **Thursday** | **2022-05-11** | **4.3** | **88%** |
+
+So `tue_tue` "winning" the previous scan at 18.36% was computed on a contract
+that **did not exist for 88% of the sample**. The same applies, less severely,
+to `mon_mon` and `wed_wed`. Only the Friday schedules have real history, and
+even they start in late 2005.
+
+## On the common window when all five actually existed (2022-05-11 →)
+
+| span | CAGR | maxDD | worst IM |
+|---|---|---|---|
+| mon_mon | 32.91% | 5.1% | −4.4% |
+| **tue_tue** | **32.52%** | 6.4% | −6.0% |
+| wed_wed | 34.62% | 6.4% | −6.2% |
+| **thu_thu** | **36.16%** | 4.9% | −4.4% |
+| fri_fri | 34.74% | 4.6% | −4.3% |
+| mon_fri | 24.11% | 5.2% | −4.6% |
+| *monthly* | *18.92%* | — | — |
+
+**The ranking completely reshuffles.** `tue_tue` goes from best on the full
+counterfactual sample to **worst** here; `thu_thu` goes from mid-pack to best.
+A ranking that inverts between samples is noise, and the roll day should not be
+chosen on it — which is now settled for a much stronger reason than before.
+
+Note also how flattering 2022-2026 is: monthly writing returns **18.92%** on
+that window against **10.60%** over 1990-2026. Post-COVID vol normalisation plus
+a strong bull market is close to the best regime a put seller can have. None of
+the common-window numbers should be read as expectations.
+
+## The one genuinely tradable weekly-vs-monthly test
+
+Friday weeklys, 2005-10-28 → 2026, 20-delta, 1x, calibrated skew:
+
+| book | CAGR | maxDD | worst IM |
+|---|---|---|---|
+| monthly | 10.29% | 18.7% | −16.1% |
+| monthly @10% cost | 9.08% | 19.1% | −16.1% |
+| **weekly fri_fri** | **19.34%** | 17.6% | −15.4% |
+| **weekly fri_fri @10% cost** | **16.64%** | 18.1% | −15.5% |
+| weekly mon_fri | 12.56% | 19.2% | −14.6% |
+| weekly mon_fri @10% cost | 10.59% | 20.9% | −14.9% |
+
+Cash over the same window: 1.72%.
+
+**The weekly-beats-monthly conclusion survives the tradability filter** — on the
+only schedule with real history, and at a realistic cost, weekly returns 16.64%
+against monthly's 9.08%, with a slightly *lower* max drawdown.
+
+## Revised verdict
+
+- **Friday weeklys are the answer** — not because they tested best (they did
+  not; `thu_thu` did on the common window), but because they are the only weekly
+  schedule with meaningful history and the deepest liquidity.
+- **Ignore the roll-day ranking entirely.** It inverts between samples, and four
+  of the five weekdays are recent listings.
+- Weekly still beats monthly by ~7.5pp on the tradable window at 10% cost.
+- Everything before 2005-10-28 in any weekly result is counterfactual and should
+  be read as a simulation of an instrument that did not exist.
+
+`SPXW_LISTED` and `listed_from()` now record these dates in code, with a test,
+so a future run cannot silently backtest a contract before it was listed.
+
+Sources: [Cboe: Tuesday and Thursday SPX
+Weeklys](https://ir.cboe.com/news/news-details/2022/Cboe-to-Add-Tuesday-and-Thursday-Expirations-for-SPX-Weeklys-Options-04-13-2022/default.aspx),
+[Cboe: Monday-expiring
+Weeklys](https://ir.cboe.com/news/news-details/2016/CBOE-to-List-SPX-Monday-Expiring-Weeklys-Options-07-11-2016/default.aspx),
+[Cboe: Wednesday-expiring
+Weeklys](https://ir.cboe.com/news/news-details/2016/CBOE-to-List-SPX-Wednesday-Expiring-Weeklys-Options-02-01-2016/default.aspx).

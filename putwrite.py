@@ -42,6 +42,24 @@ from model import bs_put
 
 TRADING_DAYS = 252
 
+# When each SPXW expiry weekday was actually first listed by Cboe. A backtest
+# of a weekday expiry before its listing date is counterfactual -- the contract
+# did not exist. Friday weeklys came first; Tuesday and Thursday are 2022
+# listings, so only ~4 years of their history is real.
+SPXW_LISTED = {
+    "fri": "2005-10-28",   # SPXW Friday weeklys
+    "wed": "2016-02-23",
+    "mon": "2016-08-15",
+    "tue": "2022-04-18",
+    "thu": "2022-05-11",
+}
+
+
+def listed_from(weekly_span: str) -> str:
+    """First date `weekly_span` was tradable, from the expiry weekday."""
+    expiry = weekly_span.split("_")[-1]
+    return SPXW_LISTED.get(expiry, "1990-01-02")
+
 
 # ---------------------------------------------------------------------------
 def strike_from_delta(S: float, target_delta: float, T: float, r: float,
@@ -123,6 +141,9 @@ class PWConfig:
     #                  carries the weekend). Any weekday pair is accepted, so
     #                  the roll day can be scanned as a robustness check.
     #   "mon_fri"      write Mon, expire Fri (4 cal days, FLAT over the weekend)
+    #
+    # TRADABILITY -- see SPXW_LISTED. Most weekday expiries are recent listings,
+    # so a scan over the full sample is largely counterfactual.
     weekly_span: str = "mon_mon"
     core_leverage: float = 0.0     # long S&P core, monthly reset (0 = cash + puts)
     div_yield: float = 0.018
