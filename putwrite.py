@@ -119,9 +119,10 @@ class PWConfig:
     # Weekly roll schedule. Real SPXW weeklies expire FRIDAY, so the choice of
     # schedule decides whether you carry the weekend -- and the weekend is where
     # the tail lives (9 of the 20 worst days since 1976 are Mondays).
-    #   "mon_mon"  write Mon, expire next Mon  (7 cal days, carries the weekend)
-    #   "fri_fri"  write Fri, expire next Fri  (7 cal days, carries the weekend)
-    #   "mon_fri"  write Mon, expire Fri       (4 cal days, FLAT over the weekend)
+    #   "<dow>_<dow>"  e.g. "fri_fri": write Fri, expire next Fri (7 cal days,
+    #                  carries the weekend). Any weekday pair is accepted, so
+    #                  the roll day can be scanned as a robustness check.
+    #   "mon_fri"      write Mon, expire Fri (4 cal days, FLAT over the weekend)
     weekly_span: str = "mon_mon"
     core_leverage: float = 0.0     # long S&P core, monthly reset (0 = cash + puts)
     div_yield: float = 0.018
@@ -186,15 +187,39 @@ def run_putwrite(data: pd.DataFrame, cfg: PWConfig) -> PWResult:
         last_of_week = np.empty(n, dtype=bool)
         last_of_week[-1] = True
         last_of_week[:-1] = wk[:-1] != wk[1:]
-        if cfg.weekly_span == "mon_mon":
-            is_write, is_settle, cycle_years = first_of_week, first_of_week, 7.0 / 365.25
-        elif cfg.weekly_span == "fri_fri":
-            is_write, is_settle, cycle_years = last_of_week, last_of_week, 7.0 / 365.25
-        elif cfg.weekly_span == "mon_fri":
-            # written Monday, expires Friday: no position over the weekend
-            is_write, is_settle, cycle_years = first_of_week, last_of_week, 4.0 / 365.25
+        DOW = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4}
+        try:
+            w_name, e_name = cfg.weekly_span.split("_")
+            w_dow, e_dow = DOW[w_name], DOW[e_name]
+        except (ValueError, KeyError):
+            raise ValueError(f"unknown weekly_span {cfg.weekly_span}") from None
+
+        def _on_or_after(target_dow):
+            """One session per week: the first at/after `target_dow`.
+
+            If the nominal weekday is a holiday and no later session exists that
+            week (e.g. a Friday holiday), fall back to the LAST session of the
+            week -- which is what the exchange does, moving the expiry earlier.
+            Never skip a week: skipping would leave the previous option open for
+            a fortnight while still priced as a one-week option.
+            """
+            dw = np.asarray(dates.dayofweek)
+            flag = np.zeros(n, dtype=bool)
+            for _, idx in pd.Series(np.arange(n)).groupby(wk):
+                ii = idx.to_numpy()
+                cand = ii[dw[ii] >= target_dow]
+                flag[cand[0] if cand.size else ii[-1]] = True
+            return flag
+
+        is_write = _on_or_after(w_dow)
+        if e_dow >= w_dow and e_name != w_name:
+            # same-week expiry (e.g. mon_fri): no weekend carried
+            is_settle = _on_or_after(e_dow)
+            cycle_years = (e_dow - w_dow) / 365.25
         else:
-            raise ValueError(f"unknown weekly_span {cfg.weekly_span}")
+            # next-week expiry on the same weekday: one weekend carried
+            is_settle = is_write
+            cycle_years = 7.0 / 365.25
     elif cfg.cycle == "month":
         is_write = is_settle = is_month_start
         cycle_years = 1.0 / 12.0

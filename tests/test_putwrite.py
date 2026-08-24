@@ -184,3 +184,27 @@ def test_weekend_flat_schedule_survives_1987_better():
                                         atm_offset=0.0, start="1987-06-01",
                                         end="1987-12-31")).final
     assert final("mon_fri") > final("fri_fri") > final("mon_mon")
+
+
+def test_no_week_is_ever_skipped_by_the_roll_calendar():
+    """Regression: a Friday holiday must not skip the week.
+
+    Skipping would leave the previous week's option open for a fortnight while
+    still priced as a one-week option.
+    """
+    d = load()
+    for span in ("mon_mon", "tue_tue", "wed_wed", "thu_thu", "fri_fri", "mon_fri"):
+        r = run_putwrite(d, PWConfig(weight=1.0, delta=0.10, cycle="week",
+                                     weekly_span=span))
+        assert 51.5 < r.n_expiries / 36.6 < 52.7, f"{span}: {r.n_expiries}"
+
+
+def test_roll_day_choice_is_second_order():
+    """Any 7-day weekly roll day should land within ~2pp of the others."""
+    d = load()
+    cagrs = []
+    for span in ("mon_mon", "tue_tue", "wed_wed", "thu_thu", "fri_fri"):
+        cagrs.append(run_putwrite(d, PWConfig(weight=1.0, delta=0.20, cycle="week",
+                                              weekly_span=span, vol_model="skew",
+                                              atm_offset=0.03)).cagr)
+    assert max(cagrs) - min(cagrs) < 0.02

@@ -494,3 +494,78 @@ part of that day's move, not all of it.
   a year instead of 12 and no exposure 43% of the time.
 - All of this remains unvalidated against any published weekly index, and the
   pre-2005 portion is counterfactual because SPX weeklys did not exist.
+
+---
+
+# Update: can you actually write at PM settlement? And does the roll day matter?
+
+## The mechanical answer: nearly, but not exactly
+
+SPXW weeklies are **PM-settled**: the settlement value is the S&P 500 *closing*
+level on expiry Friday, and the expiring series stops trading at 16:00 ET.
+Non-expiring SPX/SPXW series keep trading until 16:15 ET.
+
+So a continuous roll is *almost* available, three ways, none of them exact:
+
+1. **Write next week's in the 16:00-16:15 window**, after the expiring one has
+   stopped trading. Closest to true continuity — but the official settlement
+   print is not instant (it is built from all 500 components' closing prices),
+   and liquidity in that quarter-hour is thin.
+2. **Write next week's a few minutes before 16:00**, while the expiring one is
+   still alive. This is what most programs do. You are briefly double-exposed,
+   but only for minutes during which the cash index is barely moving — the
+   overlap is not a weekend, so it is nearly harmless.
+3. **Write next week's after the weekend.** Genuinely flat over the gap; that is
+   the `mon_fri` schedule, and it costs about a third of the return.
+
+You cannot transact *at* the settlement price itself — that is a calculated
+print, not a tradable level. The engine assumes a fill at the close, which is a
+few minutes and a half-spread optimistic, no more.
+
+## But the roll-day question swamps it
+
+Scanning the weekday while holding everything else fixed (20-delta, 1x,
+calibrated skew, 1990-2026):
+
+| span | weekend falls | CAGR 0% | CAGR 10% | maxDD | worst IM | 1987 final |
+|---|---|---|---|---|---|---|
+| mon_mon | **at expiry** | 17.20% | 14.79% | **12.4%** | −10.5% | **0.837** |
+| tue_tue | mid-life | **18.36%** | **15.95%** | 13.0% | −12.3% | 0.916 |
+| wed_wed | mid-life | 18.12% | 15.73% | 15.5% | −12.2% | 0.978 |
+| thu_thu | mid-life | 17.99% | 15.59% | 22.3% | −14.8% | **0.979** |
+| fri_fri | at inception | 17.99% | 15.60% | 17.6% | −15.4% | 0.967 |
+| mon_fri | none | 11.07% | 9.34% | 19.2% | −14.6% | **1.009** |
+| *monthly* | — | *10.60%* | *9.51%* | *18.7%* | *−16.1%* | *0.913* |
+
+**The five 7-day roll days span just 1.16pp of CAGR (17.20-18.36%).** Weekly
+beats monthly by ~7pp on *every* one of them, so that conclusion is robust. But
+the differences *between* roll days are small, and `tue_tue` topping the table
+has no mechanism behind it — that is noise.
+
+**This corrects the previous update.** I reported `fri_fri` (17.99%) beating
+`mon_mon` (17.20%) and attributed it to weekend-at-inception versus
+weekend-at-expiry. With the holiday bug fixed, `fri_fri` ties `thu_thu` and
+sits mid-pack, below `tue_tue`. A 0.8pp gap inside a 1.16pp noise band does not
+support a mechanism. **Do not choose the roll day on these numbers.**
+
+What *does* survive:
+
+- **`mon_mon` is genuinely the worst on return (17.20%) and by far the worst in
+  1987 (0.837 vs 0.916-0.979 for every other day).** Weekend-at-expiry is a real
+  liability — that part holds.
+- **`mon_fri` is genuinely different in kind**, not degree: about a third less
+  return for the best crash behaviour in the set (1987 final 1.009).
+- Interestingly `mon_mon` has the *lowest* in-sample maxDD (12.4%) while having
+  the worst 1987 — an in-sample statistic pointing the opposite way from the
+  out-of-sample stress. A good reminder that 1990-2026 max-drawdown is not a
+  tail measure.
+
+## Bug fixed in this pass
+
+The generalised roll calendar initially skipped any week whose nominal expiry
+weekday was a holiday, which left the previous week's option open for a
+fortnight while still priced as a one-week option (`fri_fri` lost 65 of 1910
+expiries). It now falls back to the last session of that week, which is what the
+exchange does. All six schedules now write 52.2 times a year. Two regression
+tests added: no week may be skipped, and the roll-day spread must stay inside
+2pp.
